@@ -20,36 +20,37 @@ on:
       - "scripts/**"
       - ".github/workflows/build.yml"
   workflow_dispatch:
-    inputs:
-      tool:
-        description: "tool to build, or 'all'"
-        required: true
-        default: all
-      target:
-        description: "target to build, or 'all'"
-        required: true
-        default: all
 
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Computes the build matrix from versions.lock so that adding a tool or a
-  # target never means editing this file.
+  # Derives the build matrix from versions.lock, so adding a tool or a target
+  # never means editing this file.
   matrix:
     runs-on: ubuntu-latest
     outputs:
-      include: ${{ steps.gen.outputs.include }}
+      # glibc-linked targets build on a plain runner.
+      standard: ${{ steps.gen.outputs.standard }}
+      # linux-x64 builds inside Alpine so the result links against musl and is
+      # fully static. It needs its own job because a matrix cannot mix
+      # containerised and non-containerised runners.
+      alpine: ${{ steps.gen.outputs.alpine }}
+      # Targets that produced artifacts, for the smoke job.
+      smoke: ${{ steps.gen.outputs.smoke }}
     steps:
       - uses: actions/checkout@v5
       - id: gen
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json, os, re, sys
+          import json, os
 
-          tools = []
+          # versions.lock columns:
+          #   tool <TAB> repo <TAB> ref <TAB> variant <TAB> targets
+          # `targets` is a comma-separated allow-list; empty means every target.
+          entries = []
           with open("versions.lock") as fh:
               for line in fh:
                   line = line.strip()
@@ -58,55 +59,60 @@ jobs:
                   parts = line.split("\t")
                   if len(parts) < 3:
                       continue
-                  tools.append({"tool": parts[0], "variant": parts[3] if len(parts) > 3 else ""})
+                  entries.append({
+                      "tool": parts[0],
+                      "variant": parts[3] if len(parts) > 3 else "",
+                      "targets": [t for t in (parts[4] if len(parts) > 4 else "").split(",") if t],
+                  })
 
-          # Deduplicate: x265 and x264 appear twice with different variants.
+          # Deduplicate: a tool may appear several times with different variants.
           seen, uniq = set(), []
-          for t in tools:
-              key = (t["tool"], t["variant"])
+          for e in entries:
+              key = (e["tool"], e["variant"])
               if key in seen:
                   continue
               seen.add(key)
-              uniq.append(t)
+              uniq.append(e)
 
-          targets = sorted(
-              f[:-4] for f in os.listdir("targets") if f.endswith(".env")
-          )
+          all_targets = sorted(f[:-4] for f in os.listdir("targets") if f.endswith(".env"))
 
-          # Recipes are only run for tools that have one; a version entry without
-          # a recipe is a placeholder and would fail the build.
+          # A version entry without a recipe is a placeholder; building it would
+          # fail, so it is skipped until the recipe lands.
           recipes = {f[:-3] for f in os.listdir("recipes") if f.endswith(".sh")}
-          uniq = [t for t in uniq if t["tool"] in recipes]
+          uniq = [e for e in uniq if e["tool"] in recipes]
 
-          include = []
-          for t in uniq:
-              for target in targets:
-                  include.append({"tool": t["tool"], "variant": t["variant"], "target": target})
+          standard, alpine, built_targets = [], [], set()
+          for e in uniq:
+              for target in (e["targets"] or all_targets):
+                  if target not in all_targets:
+                      raise SystemExit(f"versions.lock names unknown target {target!r}")
+                  built_targets.add(target)
+                  item = {"tool": e["tool"], "variant": e["variant"], "target": target}
+                  (alpine if target == "linux-x64" else standard).append(item)
 
-          print("include=" + json.dumps(include))
+          # A matrix must be a mapping, so the list is wrapped in `include`.
+          print("standard=" + json.dumps({"include": standard}))
+          print("alpine=" + json.dumps({"include": alpine}))
+          print("smoke=" + json.dumps(sorted(built_targets)))
           PY
 
   build:
     needs: matrix
+    if: ${{ needs.matrix.outputs.standard != '{"include": []}' }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.matrix.outputs.include) }}
-    runs-on: ${{ startsWith(matrix.target, 'linux-arm64') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    container: ${{ startsWith(matrix.target, 'linux-x64') && 'alpine:3.20' || '' }}
+      matrix: ${{ fromJSON(needs.matrix.outputs.standard) }}
+    # Public repositories get the arm64 runners for free with no minute limit,
+    # so linux-arm64 builds natively instead of cross-compiling.
+    runs-on: ${{ matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
 
       - name: Install build dependencies
         run: |
           set -euo pipefail
-          if [ -f /etc/alpine-release ]; then
-            apk add --no-cache bash build-base cmake nasm yasm git tar zstd \
-              pkgconf linux-headers
-          else
-            sudo apt-get update
-            sudo apt-get install -y build-essential cmake nasm yasm git \
-              pkg-config zstd
-          fi
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake nasm yasm git pkg-config zstd
 
       - name: Install cross toolchain
         run: |
@@ -119,17 +125,44 @@ jobs:
               sudo apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
               ;;
             win-x64|win-arm64)
-              # llvm-mingw is the only toolchain that covers win-arm64.
+              # llvm-mingw is the only toolchain that covers win-arm64: GCC
+              # mingw-w64 has no aarch64 support.
               git clone --depth 1 https://github.com/mstorsjo/llvm-mingw
-              LLVM_MINGW=$(ls -d "$PWD"/llvm-mingw/llvm-mingw-* | head -1)
+              LLVM_MINGW="$(ls -d "$PWD"/llvm-mingw/llvm-mingw-* | head -1)"
               echo "$LLVM_MINGW/bin" >> "$GITHUB_PATH"
               ;;
           esac
 
       - name: Build
+        run: ./scripts/build.sh "${{ matrix.tool }}" "${{ matrix.target }}" "${{ matrix.variant }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.tool }}-${{ matrix.variant }}-${{ matrix.target }}
+          path: out/${{ matrix.target }}/
+          if-no-files-found: error
+
+  # linux-x64 is built in Alpine so the result links against musl. A matrix
+  # cannot mix containerised and non-containerised runners, hence the separate
+  # job.
+  build-alpine:
+    needs: matrix
+    if: ${{ needs.matrix.outputs.alpine != '{"include": []}' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.alpine) }}
+    runs-on: ubuntu-latest
+    container: alpine:3.20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install build dependencies
         run: |
-          set -euo pipefail
-          ./scripts/build.sh "${{ matrix.tool }}" "${{ matrix.target }}" "${{ matrix.variant }}"
+          apk add --no-cache bash build-base cmake nasm yasm git tar zstd \
+            pkgconf linux-headers
+
+      - name: Build
+        run: ./scripts/build.sh "${{ matrix.tool }}" "${{ matrix.target }}" "${{ matrix.variant }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -138,12 +171,12 @@ jobs:
           if-no-files-found: error
 
   smoke:
-    needs: build
-    if: always() && needs.build.result == 'success'
+    needs: [matrix, build, build-alpine]
+    if: always() && (needs.build.result == 'success' || needs.build-alpine.result == 'success')
     strategy:
       fail-fast: false
       matrix:
-        target: [linux-x64, linux-arm64, linux-riscv64, win-x64, win-arm64]
+        target: ${{ fromJSON(needs.matrix.outputs.smoke) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -151,11 +184,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: out
+          # Each build job uploaded to out/<target>/, so the artifacts land
+          # side by side exactly as smoke.sh expects.
+          merge-multiple: true
 
       - name: Install emulators
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static wine64 || true
+          # QEMU runs the riscv64 and arm64 results; wine runs the Windows ones.
+          sudo apt-get install -y qemu-user-static || true
+          sudo apt-get install -y wine64 || sudo apt-get install -y wine || true
 
       - name: Smoke test
         run: ./scripts/smoke.sh "${{ matrix.target }}"

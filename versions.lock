@@ -4,11 +4,12 @@
 # CI rebuilds a tool only when its entry here changes, so bumping a version is
 # a one-line edit plus a commit.
 #
-# Format: one `tool<TAB>repo<TAB>ref<TAB>variant` line per build.
+# Format: one `tool<TAB>repo<TAB>ref<TAB>variant<TAB>targets` line per build.
 #   tool     logical name, matching the output directory under tools/
 #   repo     upstream repository URL
 #   ref      exact tag or commit hash (never a branch)
 #   variant  build flavour, empty for the default
+#   targets  comma-separated allow-list; empty means every target
 #
 # GPL compliance (TOOLS-REPO.md §8): the repo URL plus the exact ref recorded
 # here is the written offer of corresponding source for the binaries we
@@ -17,23 +18,32 @@
 
 # --- encoders -------------------------------------------------------------
 
-# x265 on win-x64 uses the Asuna fork to preserve existing Windows output.
-# Every other target uses upstream, which carries the ARM NEON and RISC-V RVV
-# work that Asuna (frozen at the 3.5 baseline) does not have. See PLAN.md §2.0.
+# x265 ships in three flavours. win-x64 gets all of them so the engine can pick
+# at runtime; every other target gets upstream only.
+#
+#   upstream  the modern 4.x line, which carries the ARM NEON and RISC-V RVV
+#             work. This is the default everywhere except win-x64.
+#   asuna     the Yuuki-Asuna fork, frozen at the 3.5 (2021) baseline. Retained
+#             because existing Windows output was produced with it.
+#   kyouko    AmusementClub's Kyouko build, based on upstream 4.1. This is what
+#             the current .NET release actually ships (see release.yaml), so it
+#             is the behaviour-preserving default on win-x64.
 x265	https://bitbucket.org/multicoreware/x265_git.git	4.1	upstream
-x265	https://github.com/msg7086/x265-Yuuki-Asuna.git	85189f81fe1f7b4cdd57524c8b71121b07eee6c0	asuna
+x265	https://github.com/msg7086/x265-Yuuki-Asuna.git	85189f81fe1f7b4cdd57524c8b71121b07eee6c0	asuna	win-x64
+x265	https://github.com/AmusementClub/x265.git	1a9d0ba396eb135e72d7a746e67ea16af738384c	kyouko	win-x64
 
-# x264 follows the same rule: the tmod fork only for win-x64.
+# x264 follows the same rule as x265: the x86-oriented tmod fork is built only
+# for win-x64, everything else uses upstream, whose NEON assembly is mature.
 x264	https://code.videolan.org/videolan/x264.git	stable	upstream
-x264	https://github.com/jpsdr/x264.git	fb6c86416130b9c20f4d1fa36c93276b142036de	tmod
+x264	https://github.com/jpsdr/x264.git	fb6c86416130b9c20f4d1fa36c93276b142036de	tmod	win-x64
 
 svtav1	https://github.com/AOMediaCodec/SVT-AV1.git	v4.2.0	upstream
 
 # --- containers and muxing ------------------------------------------------
 
 # mkvtoolnix has no GitHub mirror with tags; the canonical repository is on
-# gitlab. The ref below is the 93.x series.
-mkvtoolnix	https://gitlab.com/mbunkus/mkvtoolnix.git	v93.0	upstream
+# gitlab. Verify the tag resolves on the first CI run.
+mkvtoolnix	https://gitlab.com/mbunkus/mkvtoolnix.git	v102.0	upstream
 
 l-smash	https://github.com/l-smash/l-smash.git	v2.14.5	upstream
 
