@@ -1,0 +1,161 @@
+name: build
+
+# Rebuilds a tool only when its version in versions.lock changes, or when a
+# recipe changes. versions.lock is the single source of truth for versions
+# (TOOLS-REPO.md §6).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "versions.lock"
+      - "recipes/**"
+      - "targets/**"
+      - "scripts/**"
+      - ".github/workflows/build.yml"
+  pull_request:
+    paths:
+      - "versions.lock"
+      - "recipes/**"
+      - "targets/**"
+      - "scripts/**"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: "tool to build, or 'all'"
+        required: true
+        default: all
+      target:
+        description: "target to build, or 'all'"
+        required: true
+        default: all
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Computes the build matrix from versions.lock so that adding a tool or a
+  # target never means editing this file.
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.gen.outputs.include }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: gen
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re, sys
+
+          tools = []
+          with open("versions.lock") as fh:
+              for line in fh:
+                  line = line.strip()
+                  if not line or line.startswith("#"):
+                      continue
+                  parts = line.split("\t")
+                  if len(parts) < 3:
+                      continue
+                  tools.append({"tool": parts[0], "variant": parts[3] if len(parts) > 3 else ""})
+
+          # Deduplicate: x265 and x264 appear twice with different variants.
+          seen, uniq = set(), []
+          for t in tools:
+              key = (t["tool"], t["variant"])
+              if key in seen:
+                  continue
+              seen.add(key)
+              uniq.append(t)
+
+          targets = sorted(
+              f[:-4] for f in os.listdir("targets") if f.endswith(".env")
+          )
+
+          # Recipes are only run for tools that have one; a version entry without
+          # a recipe is a placeholder and would fail the build.
+          recipes = {f[:-3] for f in os.listdir("recipes") if f.endswith(".sh")}
+          uniq = [t for t in uniq if t["tool"] in recipes]
+
+          include = []
+          for t in uniq:
+              for target in targets:
+                  include.append({"tool": t["tool"], "variant": t["variant"], "target": target})
+
+          print("include=" + json.dumps(include))
+          PY
+
+  build:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.include) }}
+    runs-on: ${{ startsWith(matrix.target, 'linux-arm64') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    container: ${{ startsWith(matrix.target, 'linux-x64') && 'alpine:3.20' || '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          if [ -f /etc/alpine-release ]; then
+            apk add --no-cache bash build-base cmake nasm yasm git tar zstd \
+              pkgconf linux-headers
+          else
+            sudo apt-get update
+            sudo apt-get install -y build-essential cmake nasm yasm git \
+              pkg-config zstd
+          fi
+
+      - name: Install cross toolchain
+        run: |
+          set -euo pipefail
+          case "${{ matrix.target }}" in
+            linux-arm64)
+              # Native arm64 runner; nothing to install.
+              ;;
+            linux-riscv64)
+              sudo apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+              ;;
+            win-x64|win-arm64)
+              # llvm-mingw is the only toolchain that covers win-arm64.
+              git clone --depth 1 https://github.com/mstorsjo/llvm-mingw
+              LLVM_MINGW=$(ls -d "$PWD"/llvm-mingw/llvm-mingw-* | head -1)
+              echo "$LLVM_MINGW/bin" >> "$GITHUB_PATH"
+              ;;
+          esac
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          ./scripts/build.sh "${{ matrix.tool }}" "${{ matrix.target }}" "${{ matrix.variant }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.tool }}-${{ matrix.variant }}-${{ matrix.target }}
+          path: out/${{ matrix.target }}/
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    if: always() && needs.build.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux-x64, linux-arm64, linux-riscv64, win-x64, win-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+
+      - name: Install emulators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static wine64 || true
+
+      - name: Smoke test
+        run: ./scripts/smoke.sh "${{ matrix.target }}"

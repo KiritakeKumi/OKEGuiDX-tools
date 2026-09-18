@@ -1,0 +1,46 @@
+# OKEGuiDX-tools version lock
+#
+# This file is the single source of truth for every external tool version.
+# CI rebuilds a tool only when its entry here changes, so bumping a version is
+# a one-line edit plus a commit.
+#
+# Format: one `tool<TAB>repo<TAB>ref<TAB>variant` line per build.
+#   tool     logical name, matching the output directory under tools/
+#   repo     upstream repository URL
+#   ref      exact tag or commit hash (never a branch)
+#   variant  build flavour, empty for the default
+#
+# GPL compliance (TOOLS-REPO.md §8): the repo URL plus the exact ref recorded
+# here is the written offer of corresponding source for the binaries we
+# redistribute. Do not record a branch name, and do not edit a ref without
+# rebuilding and republishing.
+
+# --- encoders -------------------------------------------------------------
+
+# x265 on win-x64 uses the Asuna fork to preserve existing Windows output.
+# Every other target uses upstream, which carries the ARM NEON and RISC-V RVV
+# work that Asuna (frozen at the 3.5 baseline) does not have. See PLAN.md §2.0.
+x265	https://bitbucket.org/multicoreware/x265_git.git	4.1	upstream
+x265	https://github.com/msg7086/x265-Yuuki-Asuna.git	85189f81fe1f7b4cdd57524c8b71121b07eee6c0	asuna
+
+# x264 follows the same rule: the tmod fork only for win-x64.
+x264	https://code.videolan.org/videolan/x264.git	stable	upstream
+x264	https://github.com/jpsdr/x264.git	fb6c86416130b9c20f4d1fa36c93276b142036de	tmod
+
+svtav1	https://github.com/AOMediaCodec/SVT-AV1.git	v4.2.0	upstream
+
+# --- containers and muxing ------------------------------------------------
+
+# mkvtoolnix has no GitHub mirror with tags; the canonical repository is on
+# gitlab. The ref below is the 93.x series.
+mkvtoolnix	https://gitlab.com/mbunkus/mkvtoolnix.git	v93.0	upstream
+
+l-smash	https://github.com/l-smash/l-smash.git	v2.14.5	upstream
+
+# --- audio ----------------------------------------------------------------
+
+flac	https://github.com/xiph/flac.git	1.5.0	upstream
+
+# --- media utilities ------------------------------------------------------
+
+ffmpeg	https://github.com/FFmpeg/FFmpeg.git	n7.1.1	upstream

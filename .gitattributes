@@ -1,0 +1,13 @@
+###############################################################################
+# Shell scripts run on Linux runners; force LF so a Windows checkout cannot
+# introduce CRLF into a script that is later executed by bash.
+###############################################################################
+*.sh     text eol=lf
+*.yml    text eol=lf
+*.env    text eol=lf
+Makefile text eol=lf
+
+###############################################################################
+# Default: normalise line endings on commit.
+###############################################################################
+* text=auto

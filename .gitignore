@@ -1,0 +1,10 @@
+# Build scratch space and outputs.
+work/
+out/
+dist/
+
+# Editor and OS noise.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
