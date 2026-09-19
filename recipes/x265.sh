@@ -35,6 +35,10 @@
 #   x265-asuna-register.patch   Asuna builds as C++17, where clang rejects the
 #                               'register' storage class in common/md5.cpp.
 #
+# build.sh reuses work/<target>/<recipe>-<variant>/src between runs and
+# re-checks out the ref every time, so the patches are applied from a clean
+# tree; the already-applied check keeps a manually patched tree from erroring.
+#
 # CMake options below, checked against each variant's source/CMakeLists.txt:
 #
 #   HIGH_BIT_DEPTH, MAIN12     select the depth of one library build
@@ -57,9 +61,12 @@
 #   TARGET_CPU=x86-64          Kyouko's CMakeLists defaults it to "generic",
 #                              which GCC and clang reject as a -march= value
 #   CMAKE_POLICY_VERSION_MINIMUM=3.5
-#                              all three trees require CMake 2.8.8 and set
-#                              policies to OLD; CMake 4.x refuses either
-#                              without this escape hatch
+#                              all three trees require CMake 2.8.8, which
+#                              CMake 4.x refuses without this escape hatch.
+#                              It does not cover the separate
+#                              cmake_policy(SET ... OLD) calls, which CMake 4
+#                              also rejects; the CI runners ship CMake 3.x
+#                              (Ubuntu 24.04 has 3.28, Alpine 3.20 has 3.29).
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -127,8 +134,8 @@ cmake_configure() {
     cmake -S "$SRC/source" -B "$dir" "${COMMON_FLAGS[@]}" "$@"
 }
 
-# default_fetch checks out the pinned ref with `git checkout --force`, which
-# discards a previous run's patches, so applying them here is idempotent.
+# default_fetch checks out the pinned ref, so the patch is applied from a clean
+# tree; the already-applied check keeps a manually patched tree from erroring.
 apply_patches() {
     local patch
     case "$TOOL_VARIANT" in
@@ -136,37 +143,71 @@ apply_patches() {
         asuna)  patch="$ROOT/patches/x265-asuna-register.patch" ;;
         *)      return 0 ;;
     esac
-    if git -C "$SRC" apply --reverse --check "$patch" 2>/dev/null; then
+    [[ -f "$patch" ]] || { echo "missing patch: $patch" >&2; return 1; }
+    if git -C "$SRC" apply --reverse --check "$patch" >/dev/null 2>&1; then
+        echo "    patch already applied: $(basename "$patch")"
         return 0
     fi
-    git -C "$SRC" apply "$patch"
+    git -C "$SRC" apply --verbose "$patch"
+}
+
+fetch() {
+    default_fetch
+    apply_patches
 }
 
 configure() {
     collect_common_flags
-    apply_patches
 
     # build.sh checks the ref out into the same $SRC on every run, so a stale
     # build directory would otherwise survive a version bump.
     rm -rf "${WORK:?}/build"
 
-    # All three trees are generated up front. The archives the 8-bit link
+    # All three trees are generated up front. The archives the front-end link
     # needs do not exist yet: CMake only records the bare names in EXTRA_LIB,
     # and the linker resolves them through -DEXTRA_LINK_FLAGS=-L. when the
-    # 8-bit target is built (build()).
-    cmake_configure "$WORK/build/12bit" \
-        -DHIGH_BIT_DEPTH=ON -DMAIN12=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
-    cmake_configure "$WORK/build/10bit" \
-        -DHIGH_BIT_DEPTH=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
-    cmake_configure "$WORK/build/8bit" \
-        -DEXTRA_LIB="x265_main10.a;x265_main12.a" \
-        -DEXTRA_LINK_FLAGS=-L. \
-        -DLINKED_10BIT=ON -DLINKED_12BIT=ON
+    # front-end target is built (build()).
+    #
+    # The front end is 8-bit, following upstream's multilib.sh, except for
+    # Kyouko. AmusementClub's own CI makes the 10-bit pass the front end, so
+    # their released binary defaults to --output-depth 10; using an 8-bit front
+    # end here would silently change the depth of any profile that omits -D.
+    # PLAN.md requires win-x64 to preserve existing encoding behaviour, so the
+    # Kyouko build follows its upstream.
+    if [[ "$TOOL_VARIANT" == kyouko ]]; then
+        cmake_configure "$WORK/build/12bit" \
+            -DHIGH_BIT_DEPTH=ON -DMAIN12=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
+        cmake_configure "$WORK/build/8bit" \
+            -DHIGH_BIT_DEPTH=OFF -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
+        cmake_configure "$WORK/build/10bit" \
+            -DEXTRA_LIB="x265_main.a;x265_main12.a" \
+            -DEXTRA_LINK_FLAGS=-L. \
+            -DLINKED_8BIT=ON -DLINKED_12BIT=ON
+    else
+        cmake_configure "$WORK/build/12bit" \
+            -DHIGH_BIT_DEPTH=ON -DMAIN12=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
+        cmake_configure "$WORK/build/10bit" \
+            -DHIGH_BIT_DEPTH=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
+        cmake_configure "$WORK/build/8bit" \
+            -DEXTRA_LIB="x265_main10.a;x265_main12.a" \
+            -DEXTRA_LINK_FLAGS=-L. \
+            -DLINKED_10BIT=ON -DLINKED_12BIT=ON
+    fi
 }
 
 build() {
     local jobs
     jobs="$(nproc 2>/dev/null || echo 4)"
+
+    if [[ "$TOOL_VARIANT" == kyouko ]]; then
+        # The 8-bit and 12-bit libraries are linked into the 10-bit front end.
+        cmake --build "$WORK/build/12bit" --parallel "$jobs"
+        cmake --build "$WORK/build/8bit" --parallel "$jobs"
+        cp "$WORK/build/8bit/libx265.a" "$WORK/build/10bit/libx265_main.a"
+        cp "$WORK/build/12bit/libx265.a" "$WORK/build/10bit/libx265_main12.a"
+        cmake --build "$WORK/build/10bit" --parallel "$jobs"
+        return
+    fi
 
     # The high-bit-depth libraries come first: the 8-bit front end links them.
     cmake --build "$WORK/build/12bit" --parallel "$jobs"
@@ -191,7 +232,11 @@ install() {
         *)      name="x265" ;;
     esac
 
-    local built="$WORK/build/8bit/x265$exe"
+    # The Kyouko build puts its front end in the 10-bit tree; the other variants
+    # use the 8-bit tree. See configure() for why they differ.
+    local frontend="8bit"
+    [[ "$TOOL_VARIANT" == kyouko ]] && frontend="10bit"
+    local built="$WORK/build/$frontend/x265$exe"
     [[ -f "$built" ]] || { echo "x265: $built was not built" >&2; exit 1; }
 
     local dest="$PREFIX/tools/x26x"
@@ -202,12 +247,17 @@ install() {
     # The link would already have failed if the extra archives were missing,
     # but a single-depth binary is the failure mode this recipe exists to
     # avoid, so assert it. version.cpp builds the report string from
-    # BITDEPTH ADD8 ADD10 ADD12, and LINKED_10BIT/LINKED_12BIT are what turn
-    # the last two into "+10bit+12bit"; a plain 8-bit build reads "8bit" alone.
+    # BITDEPTH ADD8 ADD10 ADD12, and LINKED_* are what turn the extras into
+    # "+10bit+12bit"; a single-depth build reads e.g. "8bit" alone.
     # grepping the file avoids a pipeline, which `set -o pipefail` from
     # build.sh would turn into a false failure once grep -q exits early.
-    if ! grep -qaF '8bit+10bit+12bit' "$dest/$name$exe"; then
-        echo "x265: $name$exe is not a merged 8/10/12-bit build" >&2
+    #
+    # The reported depth differs by front end: the 8-bit one reads
+    # "8bit+10bit+12bit", the 10-bit one "10bit+8bit+12bit".
+    local marker="8bit+10bit+12bit"
+    [[ "$frontend" == "10bit" ]] && marker="10bit+8bit+12bit"
+    if ! grep -qaF "$marker" "$dest/$name$exe"; then
+        echo "x265: $name$exe is not a merged 8/10/12-bit build (want $marker)" >&2
         exit 1
     fi
 

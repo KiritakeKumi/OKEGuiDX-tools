@@ -45,9 +45,19 @@ svtav1	https://github.com/AOMediaCodec/SVT-AV1.git	v4.2.0	upstream
 
 # --- containers and muxing ------------------------------------------------
 
-# mkvtoolnix has no GitHub mirror with tags; the canonical repository is on
-# gitlab. Verify the tag resolves on the first CI run.
-mkvtoolnix	https://gitlab.com/mbunkus/mkvtoolnix.git	v102.0	upstream
+# mkvtoolnix is pinned to v58.0.0 rather than a current release, and that is a
+# deliberate trade rather than a stale entry. Upstream made Qt 6 mandatory for
+# every binary, including the command-line tools, in v59: NEWS.md for v96 states
+# that the options for choosing or disabling Qt "have been removed (e.g.
+# --disable-qt6)", and the Alpine package for 102.0 depends on libQt6Core.so.6
+# even for the CLI subpackage. v58.0.0 is the last release whose CLI tools are
+# genuinely Qt-free, which is what lets five targets (including riscv64, where
+# Qt has no packages at all) build without a Qt cross-build.
+#
+# The URL is the release tarball directory rather than a git repository: the
+# recipe fetches the signed tarball. The ref is the version, and the recipe
+# verifies its SHA-256.
+mkvtoolnix	https://mkvtoolnix.download/sources	v58.0.0	upstream
 
 l-smash	https://github.com/l-smash/l-smash.git	v2.14.5	upstream
 
