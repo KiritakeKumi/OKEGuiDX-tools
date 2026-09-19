@@ -125,6 +125,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake nasm yasm git pkg-config zstd zlib1g-dev
 
+      - name: Install mkvtoolnix build dependencies
+        if: matrix.tool == 'mkvtoolnix'
+        run: |
+          set -euo pipefail
+          # mkvtoolnix is the only tool whose build system is Ruby + rake, and
+          # its configure requires a DocBook stylesheet even when no man page is
+          # generated. Without these it aborts during configure.
+          sudo apt-get install -y rake xsltproc docbook-xsl
+
       - name: Install cross toolchain
         run: |
           set -euo pipefail
@@ -171,6 +180,12 @@ jobs:
         run: |
           apk add --no-cache bash build-base cmake nasm yasm git tar zstd \
             pkgconf linux-headers zlib-dev zlib-static
+
+      - name: Install mkvtoolnix build dependencies
+        if: matrix.tool == 'mkvtoolnix'
+        run: |
+          # See the apt step above for why mkvtoolnix needs these.
+          apk add --no-cache ruby-rake libxslt docbook-xsl
 
       - name: Build
         run: ./scripts/build.sh "${{ matrix.tool }}" "${{ matrix.target }}" "${{ matrix.variant }}"
