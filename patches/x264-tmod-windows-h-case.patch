@@ -1,0 +1,13 @@
+diff --git a/filters/video/subtitles.c b/filters/video/subtitles.c
+index 80598df..77f2ab6 100644
+--- a/filters/video/subtitles.c
++++ b/filters/video/subtitles.c
+@@ -18,7 +18,7 @@
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02111, USA.
+ *****************************************************************************/
+ 
+-#include <Windows.h>
++#include <windows.h>
+ #include "x264cli.h"
+ #include "subtitles.h"
+ #include "video.h"
