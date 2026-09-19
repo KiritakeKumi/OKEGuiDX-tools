@@ -29,8 +29,10 @@ design rationale.
 ## Usage
 
 ```sh
-# Build one tool for one target.
-./scripts/build.sh x265 linux-arm64
+# Build one tool for one target. The variant is required when versions.lock
+# lists more than one build of a tool; it is the fourth column.
+./scripts/build.sh x265 linux-arm64 upstream
+./scripts/build.sh x264 linux-arm64 upstream
 
 # Build the Asuna variant of x265 for win-x64.
 ./scripts/build.sh x265 win-x64 asuna
@@ -41,6 +43,10 @@ design rationale.
 # Package a target's output for consumption by OKEGuiDX.
 ./scripts/bundle.sh linux-x64
 ```
+
+`build.sh` looks a tool up in `versions.lock` by tool name *and* variant, so the
+variant argument must match that file exactly. Omitting it fails with a clear
+"no entry" message rather than silently picking one.
 
 Recipes are plain shell scripts exporting `fetch`, `configure`, `build` and
 `install`. There is deliberately no build framework: a recipe must be readable

@@ -1,0 +1,16 @@
+diff --git a/source/CMakeLists.txt b/source/CMakeLists.txt
+index 6c0ceb297..643d25c0b 100644
+--- a/source/CMakeLists.txt
++++ b/source/CMakeLists.txt
+@@ -273,7 +273,10 @@ if(GCC)
+         endif()
+         add_definitions(-std=gnu++11)
+     else()
+-        add_definitions(-std=gnu++98)
++        # Kyouko's CLI uses C++11 range-based for loops (x265cli.cpp,
++        # abrEncApp.cpp), so the fork's gnu++98 default does not compile.
++        # The AviSynth branch above selects gnu++11 for the same reason.
++        add_definitions(-std=gnu++11)
+     endif()
+     if(ENABLE_PIC)
+          add_definitions(-fPIC)

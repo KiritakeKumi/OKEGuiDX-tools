@@ -34,7 +34,11 @@ x265	https://github.com/AmusementClub/x265.git	1a9d0ba396eb135e72d7a746e67ea16af
 
 # x264 follows the same rule as x265: the x86-oriented tmod fork is built only
 # for win-x64, everything else uses upstream, whose NEON assembly is mature.
-x264	https://code.videolan.org/videolan/x264.git	stable	upstream
+#
+# The upstream ref is the commit that "stable" pointed at when this was written.
+# A branch name would drift, and this file is the written offer of corresponding
+# source for the binaries we redistribute.
+x264	https://code.videolan.org/videolan/x264.git	b35605ace3ddf7c1a5d67a2eb553f034aef41d55	upstream
 x264	https://github.com/jpsdr/x264.git	fb6c86416130b9c20f4d1fa36c93276b142036de	tmod	win-x64
 
 svtav1	https://github.com/AOMediaCodec/SVT-AV1.git	v4.2.0	upstream

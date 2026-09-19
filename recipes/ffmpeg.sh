@@ -14,6 +14,12 @@
 # third-party library at all also keeps the licence simple and the bundle
 # reproducible across runners (TOOLS-REPO.md §5 and §8).
 #
+# In particular, do not add the non-free AAC encoder that the licence note in
+# README.md excludes: its licence is incompatible with the GPL binaries this
+# repository publishes, and the engine refuses AAC encoding on every platform
+# without qaac anyway (PLAN.md §2.2). --enable-gpl and --enable-version3 on
+# their own are the intended configuration.
+#
 # ffplay is deliberately not built: it needs SDL2 and the engine never opens a
 # video window.
 #
@@ -71,9 +77,12 @@ configure() {
         --enable-ffprobe
         # Docs need texinfo and are not shipped.
         --disable-doc
-        # Whatever -dev packages a runner happens to have must not change the
-        # binary, and an autodetected shared library would break the static
-        # Linux targets.
+        # Autodetected system libraries (zlib, bzlib, iconv, TLS backends, ...)
+        # are deliberately off: none of them is needed for demuxing, audio
+        # decoding or FLAC encoding, and probing for them would make the binary
+        # depend on which -dev packages a runner happens to have - on the
+        # static Linux targets an autodetected shared library would not link
+        # at all.
         --disable-autodetect
     )
 
@@ -111,8 +120,8 @@ install() {
             exit 1
         fi
         # cp rather than install(1): install() is this very function.
-        cp "$stage/bin/$prog$exe" "$PREFIX/tools/ffmpeg/$prog$exe"
-        chmod 755 "$PREFIX/tools/ffmpeg/$prog$exe"
+        cp -f "$stage/bin/$prog$exe" "$PREFIX/tools/ffmpeg/$prog$exe"
+        chmod 0755 "$PREFIX/tools/ffmpeg/$prog$exe"
     done
     ls -l "$PREFIX/tools/ffmpeg"
 }

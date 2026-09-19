@@ -61,9 +61,10 @@ fetch() {
 configure() {
     cd "$SRC"
 
-    # --enable-pic is what upstream's own CI passes for every target. On x86-64
-    # nasm forces PIC anyway; on aarch64 it selects the adrp/:lo12: form of
-    # movrel in asm.S, which is the one that is correct for COFF.
+    # --enable-pic matches what upstream's own CI passes for every target,
+    # including the llvm-mingw aarch64 build. On x86-64 nasm forces PIC
+    # regardless; on aarch64 it makes asm.S's movrel emit adrp/:lo12: instead
+    # of a literal-pool load.
     local args=(
         --prefix="$PREFIX/tools/x26x"
         --host="$(host_triplet)"
