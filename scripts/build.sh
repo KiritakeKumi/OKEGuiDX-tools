@@ -83,7 +83,7 @@ fi
 
 export TOOL_NAME TOOL_REPO TOOL_REF
 
-echo "=== building $TOOL_NAME ($TOOL_REF${TOOL_VARIANT:+, $TOOL_VARIANT) for $TARGET"
+echo "=== building $TOOL_NAME ($TOOL_REF${TOOL_VARIANT:+, $TOOL_VARIANT}) for $TARGET"
 echo "    repo:   $TOOL_REPO"
 echo "    work:   $WORK"
 echo "    prefix: $PREFIX"
