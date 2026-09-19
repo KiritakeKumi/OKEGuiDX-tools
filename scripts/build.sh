@@ -46,9 +46,12 @@ export WINDRES="${WINDRES:-}"
 WORK="$ROOT/work/$TARGET/$RECIPE${VARIANT:+-$VARIANT}"
 SRC="$WORK/src"
 PREFIX="$ROOT/out/$TARGET"
-export WORK SRC PREFIX
+# DEPS is the shared dependency tree for a target: static libraries that recipes
+# link against but that are not shipped in the bundle, such as zlib.
+DEPS="$ROOT/out/$TARGET/deps"
+export WORK SRC PREFIX DEPS
 
-mkdir -p "$WORK" "$PREFIX"
+mkdir -p "$WORK" "$PREFIX" "$DEPS"
 
 # The version to build comes from versions.lock, which is the only place a
 # version is recorded. The variant selects between two builds of one tool.
@@ -87,6 +90,25 @@ echo "=== building $TOOL_NAME ($TOOL_REF${TOOL_VARIANT:+, $TOOL_VARIANT}) for $T
 echo "    repo:   $TOOL_REPO"
 echo "    work:   $WORK"
 echo "    prefix: $PREFIX"
+
+# --- dependencies -----------------------------------------------------------
+
+# require_dependency <tool>
+#
+# Builds another recipe for the same target unless its library is already in
+# place. Recipes call this instead of assuming the dependency exists, which
+# keeps the ordering out of the CI workflow and makes a local build work the
+# same way. The dependency is built with the same target environment and the
+# same variant, so its toolchain matches.
+require_dependency() {
+    local dep="$1"
+    if [[ -f "$DEPS/lib/lib${dep}.a" ]]; then
+        echo "    dependency $dep already built"
+        return
+    fi
+    echo "    building dependency $dep"
+    "$ROOT/scripts/build.sh" "$dep" "$TARGET" "${VARIANT:-}" >&2
+}
 
 # --- fetch -----------------------------------------------------------------
 

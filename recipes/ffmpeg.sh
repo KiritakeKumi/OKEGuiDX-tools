@@ -56,6 +56,12 @@ configure() {
     local stage="$WORK/stage"
     rm -rf "$stage"
 
+    # zlib is the one system library this build links. It cannot be
+    # autodetected: llvm-mingw does not ship it for the Windows targets, and the
+    # Alpine container only has a shared build, which the fully static targets
+    # cannot use. So it is built for the target first and pointed at explicitly.
+    require_dependency zlib
+
     local args=(
         --prefix="$stage"
         --arch="$arch"
@@ -69,6 +75,8 @@ configure() {
         --enable-static
         --disable-shared
         --pkg-config-flags=--static
+        --extra-cflags="-I$DEPS/include"
+        --extra-ldflags="-L$DEPS/lib"
         --enable-gpl
         --enable-version3
         # ffmpeg and ffprobe only.
@@ -77,13 +85,17 @@ configure() {
         --enable-ffprobe
         # Docs need texinfo and are not shipped.
         --disable-doc
-        # Autodetected system libraries (zlib, bzlib, iconv, TLS backends, ...)
-        # are deliberately off: none of them is needed for demuxing, audio
-        # decoding or FLAC encoding, and probing for them would make the binary
-        # depend on which -dev packages a runner happens to have - on the
-        # static Linux targets an autodetected shared library would not link
-        # at all.
+        # Autodetected system libraries (bzlib, iconv, TLS backends, ...) are off
+        # because none is needed for demuxing, audio decoding or FLAC encoding,
+        # and probing for them would make the binary depend on which -dev
+        # packages a runner happens to have - on the static Linux targets an
+        # autodetected shared library would not link at all.
         --disable-autodetect
+        # zlib is the one exception, and it is enabled explicitly rather than
+        # autodetected so the result does not vary by runner. mkvmerge zlib-
+        # compresses some subtitle tracks by default, and the current release's
+        # ffmpeg can decode them; leaving it out would be a regression.
+        --enable-zlib
     )
 
     if [[ -n "${CROSS_PREFIX:-}" ]]; then

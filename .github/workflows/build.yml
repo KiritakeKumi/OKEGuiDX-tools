@@ -81,6 +81,17 @@ jobs:
           recipes = {f[:-3] for f in os.listdir("recipes") if f.endswith(".sh")}
           uniq = [e for e in uniq if e["tool"] in recipes]
 
+          # Recipes that only produce a static library for other recipes to link
+          # against are built on demand by require_dependency, not as matrix
+          # entries: they have no bundle of their own. A marker in the recipe
+          # declares that, so the list never has to be maintained here.
+          dep_only = set()
+          for tool in recipes:
+              with open(f"recipes/{tool}.sh") as fh:
+                  if "TOOL_IS_DEPENDENCY=1" in fh.read():
+                      dep_only.add(tool)
+          uniq = [e for e in uniq if e["tool"] not in dep_only]
+
           standard, alpine, built_targets = [], [], set()
           for e in uniq:
               for target in (e["targets"] or all_targets):
@@ -112,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake nasm yasm git pkg-config zstd
+          sudo apt-get install -y build-essential cmake nasm yasm git pkg-config zstd zlib1g-dev
 
       - name: Install cross toolchain
         run: |
@@ -159,7 +170,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apk add --no-cache bash build-base cmake nasm yasm git tar zstd \
-            pkgconf linux-headers
+            pkgconf linux-headers zlib-dev zlib-static
 
       - name: Build
         run: ./scripts/build.sh "${{ matrix.tool }}" "${{ matrix.target }}" "${{ matrix.variant }}"

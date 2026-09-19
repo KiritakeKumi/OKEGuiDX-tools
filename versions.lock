@@ -58,3 +58,11 @@ flac	https://github.com/xiph/flac.git	1.5.0	upstream
 # --- media utilities ------------------------------------------------------
 
 ffmpeg	https://github.com/FFmpeg/FFmpeg.git	n7.1.1	upstream
+
+# --- build dependencies ---------------------------------------------------
+#
+# Not shipped in the bundle: static libraries that other recipes link against.
+# They live in out/<target>/deps/ and are built on demand by
+# scripts/build.sh's require_dependency.
+
+zlib	https://github.com/madler/zlib.git	216c70c020aa53f0c40920d155f808b6b59c9acb	upstream
