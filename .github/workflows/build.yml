@@ -109,7 +109,10 @@ jobs:
 
   build:
     needs: matrix
-    if: ${{ needs.matrix.outputs.standard != '{"include": []}' }}
+    # The `include` wrapper is always present, so an empty matrix is the literal
+    # `{"include": []}`. Compare against the parsed form to avoid embedding a
+    # colon inside an unquoted scalar, which is not valid YAML.
+    if: ${{ fromJSON(needs.matrix.outputs.standard).include[0] != null }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.standard) }}
@@ -167,7 +170,7 @@ jobs:
   # job.
   build-alpine:
     needs: matrix
-    if: ${{ needs.matrix.outputs.alpine != '{"include": []}' }}
+    if: ${{ fromJSON(needs.matrix.outputs.alpine).include[0] != null }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.alpine) }}
