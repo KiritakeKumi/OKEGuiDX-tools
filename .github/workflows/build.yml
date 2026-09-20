@@ -76,9 +76,16 @@ jobs:
 
           all_targets = sorted(f[:-4] for f in os.listdir("targets") if f.endswith(".env"))
 
-          # A version entry without a recipe is a placeholder; building it would
-          # fail, so it is skipped until the recipe lands.
+          # A version entry without a recipe is a mistake, not a placeholder to
+          # skip: a typo in the tool name used to drop the entry silently, which
+          # is how l-smash went unbuilt for every target. Fail instead.
           recipes = {f[:-3] for f in os.listdir("recipes") if f.endswith(".sh")}
+          unknown = sorted({e["tool"] for e in uniq} - recipes)
+          if unknown:
+              raise SystemExit(
+                  "versions.lock names tools with no recipes/<tool>.sh: "
+                  + ", ".join(unknown)
+              )
           uniq = [e for e in uniq if e["tool"] in recipes]
 
           # Recipes that only produce a static library for other recipes to link

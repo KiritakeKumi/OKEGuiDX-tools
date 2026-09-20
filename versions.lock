@@ -59,7 +59,11 @@ svtav1	https://github.com/AOMediaCodec/SVT-AV1.git	v4.2.0	upstream
 # verifies its SHA-256.
 mkvtoolnix	https://mkvtoolnix.download/sources	v58.0.0	upstream
 
-l-smash	https://github.com/l-smash/l-smash.git	v2.14.5	upstream
+# The tool key must match the recipe filename stem: the matrix job looks up
+# recipes/<tool>.sh, so "l-smash" here would silently drop the entry and the
+# MP4 muxer would never be built. The install path stays tools/l-smash, which
+# is where the engine looks for it.
+lsmash	https://github.com/l-smash/l-smash.git	v2.14.5	upstream
 
 # --- audio ----------------------------------------------------------------
 
