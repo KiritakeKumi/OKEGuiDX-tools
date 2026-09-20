@@ -52,8 +52,27 @@ mkdir -p "$STAGE/LICENSES"
         { printf "| %s%s | %s | `%s` |\n", $1, ($4 != "" ? " (" $4 ")" : ""), $2, $3 }
     ' "$ROOT/versions.lock"
     echo
-    echo "The recipes in recipes/ are the exact build scripts used; any patch"
-    echo "applied by a recipe lives in patches/ and is part of the source."
+    echo "## Build scripts and patches"
+    echo
+    echo "The recipes in \`recipes/\` are the exact build scripts used, and any"
+    echo "patch a recipe applies lives in \`patches/\` and is part of the"
+    echo "source. Both are published in the tools repository:"
+    echo
+    echo "    ${TOOLS_REPO_URL:-https://github.com/KiritakeKumi/OKEGuiDX-tools}"
+    echo
+    # Derived from the recipes rather than written by hand, so a new patch
+    # cannot be applied without appearing here.
+    patched=$(grep -ho 'patches/[A-Za-z0-9._-]*\.patch' "$ROOT"/recipes/*.sh | sort -u)
+    if [[ -n "$patched" ]]; then
+        echo
+        echo "The binaries below are built from a patched tree, so the"
+        echo "corresponding source is the upstream ref above *plus* these"
+        echo "patches:"
+        echo
+        while IFS= read -r p; do
+            echo "- \`$p\`"
+        done <<< "$patched"
+    fi
 } > "$STAGE/SOURCES.md"
 
 cp "$ROOT/versions.lock" "$STAGE/LICENSES/versions.lock"
