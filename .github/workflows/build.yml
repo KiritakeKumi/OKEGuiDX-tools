@@ -157,9 +157,19 @@ jobs:
             win-x64|win-arm64)
               # llvm-mingw is the only toolchain that covers win-arm64: GCC
               # mingw-w64 has no aarch64 support.
-              git clone --depth 1 https://github.com/mstorsjo/llvm-mingw
-              LLVM_MINGW="$(ls -d "$PWD"/llvm-mingw/llvm-mingw-* | head -1)"
-              echo "$LLVM_MINGW/bin" >> "$GITHUB_PATH"
+              #
+              # It must come from a release asset, not a git clone:
+              # mstorsjo/llvm-mingw is the *build scripts* repository and ships
+              # no binaries, so the previous `git clone` plus `ls
+              # llvm-mingw/llvm-mingw-*` never matched anything and every
+              # Windows matrix entry died in this step.
+              release=20260908
+              asset="llvm-mingw-$release-ucrt-ubuntu-22.04-x86_64.tar.xz"
+              curl -fsSL -o "/tmp/$asset" \
+                "https://github.com/mstorsjo/llvm-mingw/releases/download/$release/$asset"
+              mkdir -p /opt/llvm-mingw
+              tar -xJf "/tmp/$asset" -C /opt/llvm-mingw --strip-components=1
+              echo "/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
               ;;
           esac
 
