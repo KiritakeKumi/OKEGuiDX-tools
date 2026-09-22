@@ -27,7 +27,16 @@ PREFIX="$ROOT/out/$TARGET"
 runner_for() {
     case "$TARGET" in
         linux-riscv64) echo "qemu-riscv64 -L /usr/riscv64-linux-gnu" ;;
-        linux-arm64)   echo "qemu-aarch64 -L /usr/aarch64-linux-gnu" ;;
+        linux-arm64)
+            # linux-arm64 builds natively on GitHub's arm64 runner, so the
+            # binaries run directly there. qemu is only needed when the host is
+            # a different architecture; asking for it unconditionally made every
+            # arm64 smoke test fail with "qemu-aarch64: command not found".
+            case "$(uname -m)" in
+                aarch64|arm64) echo "" ;;
+                *)             echo "qemu-aarch64 -L /usr/aarch64-linux-gnu" ;;
+            esac
+            ;;
         win-*)         echo "wine" ;;
         *)             echo "" ;;
     esac
