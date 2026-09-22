@@ -107,7 +107,14 @@ require_dependency() {
         return
     fi
     echo "    building dependency $dep"
-    "$ROOT/scripts/build.sh" "$dep" "$TARGET" "${VARIANT:-}" >&2
+    # The child must look the dependency up itself. This script has already
+    # exported TOOL_NAME/TOOL_REPO/TOOL_REF for the *parent* tool, and a child
+    # process inherits them, so the child's `: "${TOOL_REPO:=...}"` never
+    # consulted versions.lock: zlib was silently cloned from the FFmpeg tree
+    # (and, under mkvtoolnix, from the mkvtoolnix tarball directory) and then
+    # failed on a configure option that tool does not have.
+    env -u TOOL_NAME -u TOOL_REPO -u TOOL_REF -u TOOL_VARIANT \
+        "$ROOT/scripts/build.sh" "$dep" "$TARGET" "${VARIANT:-}" >&2
 }
 
 # --- fetch -----------------------------------------------------------------
