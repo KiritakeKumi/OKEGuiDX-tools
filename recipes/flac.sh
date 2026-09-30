@@ -42,11 +42,18 @@ configure() {
         -DINSTALL_MANPAGES=OFF
         -DINSTALL_PKGCONFIG_MODULES=OFF
         -DINSTALL_CMAKE_CONFIG_MODULE=OFF
-        # metaflac links the bundled replaygain analysis object, which calls
-        # log10(); without -lm the link fails on glibc with "undefined reference
-        # to `log10'". LDFLAGS from the target env are not used for the CMake
-        # link line here, so the flag has to be passed explicitly.
-        -DCMAKE_EXE_LINKER_FLAGS="-lm"
+        # metaflac links the bundled replaygain analysis archive, which calls
+        # log10(); without libm the link fails on glibc with "undefined
+        # reference to `log10'". LDFLAGS from the target env is not used for the
+        # CMake executable link line, so the library has to be named here.
+        #
+        # It must be CMAKE_C_STANDARD_LIBRARIES, which CMake places after the
+        # object files and libraries. CMAKE_EXE_LINKER_FLAGS looks equivalent
+        # but is emitted before them, and with static libraries GNU ld resolves
+        # symbols left to right, so a -lm ahead of libreplaygain_analysis.a is
+        # never consulted and the link still fails with the same error.
+        -DCMAKE_C_STANDARD_LIBRARIES="-lm"
+        -DCMAKE_CXX_STANDARD_LIBRARIES="-lm"
     )
 
     # The Windows targets ship a version resource, which CMake compiles with
