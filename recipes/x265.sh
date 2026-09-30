@@ -94,6 +94,17 @@ collect_common_flags() {
     # reported as an unused variable.
     if [[ "$CMAKE_SYSTEM_NAME" != Windows ]]; then
         COMMON_FLAGS+=(-DENABLE_LIBNUMA=OFF)
+        # Every Linux target is fully static. CMake renders the out-of-tree
+        # archives named in EXTRA_LIB as a "-Wl,-Bstatic ... -Wl,-Bdynamic"
+        # pair, and that trailing -Bdynamic switches the linker back to shared
+        # lookup for the runtimes it adds afterwards, so libstdc++ and libc are
+        # taken as .so. glibc tolerates it, which is why only the Alpine job
+        # failed: musl's libc.so cannot be linked into a -static image and the
+        # link dies with "attempted static link of dynamic object". Ending the
+        # search in static mode keeps that flag off the line. Not set for
+        # Windows, where the out-of-tree archives are handled differently and
+        # the link already succeeds.
+        COMMON_FLAGS+=(-DCMAKE_LINK_SEARCH_END_STATIC=TRUE)
     fi
     case "$TOOL_VARIANT" in
         asuna|kyouko)
