@@ -33,22 +33,34 @@ host_triplet() {
     esac
 }
 
-# tmod's filters/video/subtitles.c includes <Windows.h> with a capital W, but
-# mingw-w64 ships only lowercase windows.h and the CI filesystem is
-# case-sensitive, so the win-x64 cross build fails to find the header. Windows
-# compilers never notice, which is why upstream never had to fix it.
+# tmod needs two fixes that upstream never had to make:
+#
+#   * filters/video/subtitles.c includes <Windows.h> with a capital W, but
+#     mingw-w64 ships only lowercase windows.h and the CI filesystem is
+#     case-sensitive, so the win-x64 cross build fails to find the header.
+#     Windows compilers never notice.
+#   * filters/audio/audio_filters.h includes <lsmash.h> unconditionally, and the
+#     CLI reaches that header through audio/encoders.h whatever configure was
+#     told, so a build with l-smash disabled still needs the header. Guarding
+#     both the include and the one type that uses it on HAVE_LSMASH lets the
+#     tmod variant build with no l-smash in the tree.
 #
 # build.sh reuses work/<target>/<recipe>-<variant>/src between runs and
-# re-checks out the ref every time, so the patch is applied from a clean tree;
-# the already-applied check keeps a manually patched tree from erroring.
+# re-checks out the ref every time, so the patches are applied from a clean
+# tree; the already-applied check keeps a manually patched tree from erroring.
 apply_patches() {
-    local patch="$ROOT/patches/x264-tmod-windows-h-case.patch"
-    [[ -f "$patch" ]] || { echo "missing patch: $patch" >&2; return 1; }
-    if git -C "$SRC" apply --reverse --check "$patch" >/dev/null 2>&1; then
-        echo "    patch already applied: $(basename "$patch")"
-        return 0
-    fi
-    git -C "$SRC" apply --verbose "$patch"
+    local patch
+    for patch in \
+        "$ROOT/patches/x264-tmod-windows-h-case.patch" \
+        "$ROOT/patches/x264-tmod-lsmash-include-guard.patch"
+    do
+        [[ -f "$patch" ]] || { echo "missing patch: $patch" >&2; return 1; }
+        if git -C "$SRC" apply --reverse --check "$patch" >/dev/null 2>&1; then
+            echo "    patch already applied: $(basename "$patch")"
+            continue
+        fi
+        git -C "$SRC" apply --verbose "$patch"
+    done
 }
 
 fetch() {
@@ -73,12 +85,19 @@ configure() {
         --enable-pic
     )
 
-    # tmod also carries audio encoders and libavformat-backed AVI output. The
-    # engine feeds x264 a y4m pipe and muxes audio separately, so both are dead
-    # weight; disabling them keeps the build independent of whichever libraries
-    # happen to be visible to the cross toolchain.
+    # tmod also carries audio encoders, libavformat-backed AVI output and
+    # l-smash input support. The engine feeds x264 a y4m pipe and muxes audio
+    # separately, so all three are dead weight; disabling them keeps the build
+    # independent of whichever libraries happen to be visible to the cross
+    # toolchain.
+    #
+    # --disable-lsmash alone is not enough. tmod's audio header chain includes
+    # <lsmash.h> unconditionally while the CLI includes that chain unguarded, so
+    # configure still needs the header even with l-smash switched off; the
+    # guard patch applied in fetch() makes those two includes respect
+    # HAVE_LSMASH.
     if [[ "${TOOL_VARIANT:-}" == "tmod" ]]; then
-        args+=( --disable-audio --disable-avi-output )
+        args+=( --disable-audio --disable-avi-output --disable-lsmash )
     fi
 
     ./configure "${args[@]}"

@@ -1,0 +1,32 @@
+diff --git a/filters/audio/audio_filters.h b/filters/audio/audio_filters.h
+index 1591211b..f3a83584 100644
+--- a/filters/audio/audio_filters.h
++++ b/filters/audio/audio_filters.h
+@@ -3,8 +3,13 @@
+ 
+ #include <stdint.h>
+ #include <inttypes.h>
+-#include <lsmash.h>
++/* x264cli.h pulls in config.h (via common/base.h -> osdep.h), which defines
++ * HAVE_LSMASH. It has to come first: testing the macro before config.h is
++ * visible always reads as 0 and would drop lsmash.h from builds that want it. */
+ #include "x264cli.h"
++#if HAVE_LSMASH
++#include <lsmash.h>
++#endif
+ #include "filters/filters.h"
+ 
+ // Ripped from ffmpeg's audioconvert.h
+@@ -75,10 +80,12 @@ typedef struct audio_aac_info_t
+     int has_sbr;
+ } audio_aac_info_t;
+ 
++#if HAVE_LSMASH
+ typedef struct audio_dts_info_t
+ {
+     lsmash_codec_type_t coding_name;
+ } audio_dts_info_t;
++#endif
+ 
+ typedef struct audio_packet_t {
+     int64_t         dts;

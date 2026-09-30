@@ -179,7 +179,11 @@ configure() {
             -DHIGH_BIT_DEPTH=ON -DMAIN12=ON -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
         cmake_configure "$WORK/build/8bit" \
             -DHIGH_BIT_DEPTH=OFF -DEXPORT_C_API=OFF -DENABLE_CLI=OFF
+        # -DHIGH_BIT_DEPTH=ON is what makes this a 10-bit front end: without it
+        # X265_DEPTH defaults to 8, so the CLI reported "8bit+8bit+12bit" and
+        # the install check below failed a build that had otherwise succeeded.
         cmake_configure "$WORK/build/10bit" \
+            -DHIGH_BIT_DEPTH=ON \
             -DEXTRA_LIB="x265_main.a;x265_main12.a" \
             -DEXTRA_LINK_FLAGS=-L. \
             -DLINKED_8BIT=ON -DLINKED_12BIT=ON
