@@ -644,7 +644,33 @@ configure() {
     export RUBYOPT="-r$shim ${RUBYOPT:-}"
     echo "    ruby shim: $shim"
 
-    ./configure "${args[@]}"
+    # libebml's EbmlMaster.cpp calls std::back_inserter after including only
+    # <algorithm>; that happens to work with libstdc++, whose headers pull
+    # <iterator> in transitively, but not with the libc++ that llvm-mingw
+    # ships, where the win-x64/win-arm64 build stops at
+    # "no member named 'back_inserter' in namespace 'std'".
+    #
+    # -include iterator is passed through CXXFLAGS -- it is a C++-only header,
+    # and configure's ac/extra_inc_lib.m4 maps CXXFLAGS to USER_CXXFLAGS, which
+    # the Rakefile appends to every C++ compile. Nothing in the source tree is
+    # touched, so an upstream version bump cannot leave a stale patch behind.
+    # It is applied on every target rather than only under llvm-mingw: forcing
+    # the include is a no-op where libstdc++ already provides it, and that
+    # keeps this off a brittle match against the compiler name.
+    #
+    # FLAC__NO_DLL is the same class of problem on the Windows targets only.
+    # FLAC's export.h defines FLAC_API as __declspec(dllimport) unless the
+    # *consumer* defines FLAC__NO_DLL, so linking the static libFLAC.a that
+    # build_deps installs fails with "undefined symbol: __declspec(dllimport)
+    # FLAC__stream_decoder_..." and lld's "is available in libFLAC.a but
+    # cannot be used because it is not an import library". libFLAC.a is built
+    # with --disable-shared, so every symbol really is there; the header was
+    # simply never told. autotools records no such define in flac.pc, so it
+    # has to be passed here. It is harmless off Windows, where export.h takes
+    # the visibility-attribute branch instead.
+    CXXFLAGS="${CXXFLAGS:-} -include iterator -DFLAC__NO_DLL" \
+        CFLAGS="${CFLAGS:-} -DFLAC__NO_DLL" \
+        ./configure "${args[@]}"
 }
 
 # ---------------------------------------------------------------------------

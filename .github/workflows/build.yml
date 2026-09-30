@@ -198,12 +198,15 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          # curl is not part of the alpine base image, unlike ubuntu-latest, and
-          # the mkvtoolnix recipe downloads its tarballs and bundled libraries
-          # with it. Without this the alpine mkvtoolnix job dies immediately at
-          # "curl: command not found".
+          # curl and xz are not part of the alpine base image, unlike
+          # ubuntu-latest, and the mkvtoolnix recipe needs both: it downloads
+          # its tarball and bundled libraries with curl, then unpacks
+          # mkvtoolnix-<v>.tar.xz, which busybox tar cannot decompress without
+          # the xz binary ("tar (child): xz: Cannot exec"). Without these the
+          # alpine mkvtoolnix job dies at "curl: command not found", and would
+          # do so at the extraction step even once curl is present.
           apk add --no-cache bash build-base cmake nasm yasm git tar zstd \
-            pkgconf linux-headers zlib-dev zlib-static curl
+            pkgconf linux-headers zlib-dev zlib-static curl xz
 
       - name: Install mkvtoolnix build dependencies
         if: matrix.tool == 'mkvtoolnix'
