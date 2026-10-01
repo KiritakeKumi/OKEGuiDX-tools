@@ -96,6 +96,26 @@ FAILED=0
 SKIPPED=0
 TOTAL=0
 
+# Bound each invocation. A --version check either answers immediately or is
+# broken, and an emulator that hangs instead of failing (arm64 wine stalls in
+# its prefix setup) would otherwise look identical to a slow build. `timeout`
+# is GNU coreutils and is absent from Git Bash, so it is used only when present;
+# the Windows runner executes its own binaries and does not need it.
+#
+# The runner is expanded into an array too, and only non-empty entries are
+# added: timeout treats its first argument as the command, so a bare
+# `timeout 60 "" <bin>` -- which is what an empty $RUNNER would produce --
+# fails with "failed to run command ''". On the native Windows path the runner
+# is legitimately empty.
+TIMEOUT=()
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT+=(timeout 60)
+fi
+RUN=()
+if [[ -n "$RUNNER" ]]; then
+    RUN=("$RUNNER")
+fi
+
 check() {
     local bin="$1"; shift
     TOTAL=$((TOTAL + 1))
@@ -105,7 +125,7 @@ check() {
         return
     fi
     local out
-    if ! out=$($RUNNER "$bin" "$@" 2>&1 | head -3); then
+    if ! out=$(${TIMEOUT[@]+"${TIMEOUT[@]}"} ${RUN[@]+"${RUN[@]}"} "$bin" "$@" 2>&1 | head -3); then
         echo "FAIL  $bin"
         echo "$out" | sed 's/^/      /'
         FAILED=$((FAILED + 1))

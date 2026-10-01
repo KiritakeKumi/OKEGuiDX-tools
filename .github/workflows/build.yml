@@ -262,6 +262,11 @@ jobs:
     # .exe on real ARM64 Windows is the only real check, and the runner is free
     # for public repositories.
     runs-on: ${{ matrix.target == 'win-arm64' && 'windows-11-arm' || 'ubuntu-latest' }}
+    # The default is 360 minutes. An emulator that hangs rather than fails --
+    # arm64 wine did exactly that, sitting in the Smoke test step for an hour --
+    # would otherwise hold the run, and the concurrency group, for six. Ten
+    # minutes is many times the real duration of every check here.
+    timeout-minutes: 10
     defaults:
       run:
         # bash exists on every runner (Git Bash on Windows), so one script
