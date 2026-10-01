@@ -254,7 +254,14 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.matrix.outputs.smoke) }}
-    runs-on: ubuntu-latest
+    # win-arm64 needs an arm64 host. Wine emulates a foreign architecture, and
+    # on x86-64 it cannot start an ARM64 PE at all: the run fails with
+    # "Application could not be started, or no application associated with the
+    # specified file", which is what left win-arm64 as the only red smoke job
+    # once the other four passed. The arm64 runner is free for public
+    # repositories and runs the ARM64 binaries through a native arm64 wine.
+    # linux-arm64 stays on x86-64, where qemu-aarch64-static already works.
+    runs-on: ${{ matrix.target == 'win-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -286,9 +293,24 @@ jobs:
       - name: Install emulators
         run: |
           sudo apt-get update
-          # QEMU runs the riscv64 and arm64 results; wine runs the Windows ones.
+          # qemu runs the riscv64 and arm64 Linux results; wine runs the
+          # Windows ones. win-arm64 runs on the arm64 runner above, where the
+          # wine package is the arm64 build and can start an ARM64 PE.
           sudo apt-get install -y qemu-user-static || true
+          # The wine64 package installs no "wine" command on Debian/Ubuntu --
+          # the binary lives at /usr/lib/wine/wine64 with no /usr/bin symlink --
+          # but smoke.sh calls "wine". Link it so the check does not depend on
+          # the fallback package being the one that provides the command.
           sudo apt-get install -y wine64 || sudo apt-get install -y wine || true
+          if ! command -v wine >/dev/null 2>&1; then
+            for candidate in /usr/lib/wine/wine64 /usr/lib/wine/wine; do
+              if [[ -x "$candidate" ]]; then
+                sudo ln -sf "$candidate" /usr/local/bin/wine
+                break
+              fi
+            done
+          fi
+          command -v wine && wine --version || echo "wine is not available on this runner"
 
       - name: Smoke test
         run: ./scripts/smoke.sh "${{ matrix.target }}"
