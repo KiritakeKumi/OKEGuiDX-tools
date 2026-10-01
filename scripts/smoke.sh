@@ -111,9 +111,14 @@ TIMEOUT=()
 if command -v timeout >/dev/null 2>&1; then
     TIMEOUT+=(timeout 60)
 fi
+# $RUNNER is a command line ("qemu-riscv64-static -L /usr/riscv64-linux-gnu"),
+# not one word, so it has to be split here. Quoting it into a single array
+# element made timeout look for a program with that whole string as its name,
+# and every riscv64 check failed with "failed to run command ... No such file
+# or directory" although qemu was installed and the name had resolved.
 RUN=()
 if [[ -n "$RUNNER" ]]; then
-    RUN=("$RUNNER")
+    read -r -a RUN <<<"$RUNNER"
 fi
 
 check() {
