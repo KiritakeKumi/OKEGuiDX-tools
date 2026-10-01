@@ -175,7 +175,7 @@ apply_patches() {
             # RVV filter intrinsics leak vxrm into the assembly kernels, which
             # makes an RVV build differ from the C reference and from itself
             # between runs. Only a riscv64 build of a tree that has the RVV code
-            # is affected: x265 4.1 has no riscv64 directory at all, and every
+            # is affected: x265 4.1 and earlier have no riscv64 directory at all, and every
             # other target compiles none of this. If the tree has the code but
             # the patch no longer applies, the build stops on purpose: shipping
             # a non-reproducible encoder silently is worse than a red job, and

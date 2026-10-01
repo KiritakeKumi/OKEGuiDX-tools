@@ -22,14 +22,15 @@
 # at runtime; every other target gets upstream only.
 #
 #   upstream  the modern 4.x line, which carries the ARM NEON work. This is the
-#             default everywhere except win-x64. RISC-V RVV is NOT in 4.1: it
-#             first appears in 4.2, so at 4.1 a linux-riscv64 build is plain C.
+#             default everywhere except win-x64. RISC-V RVV first appears in
+#             4.2 (4.1 has none), which is why this is pinned at 4.2; the RVV
+#             build needs patches/x265-rvv-restore-vxrm.patch to be correct.
 #   asuna     the Yuuki-Asuna fork, frozen at the 3.5 (2021) baseline. Retained
 #             because existing Windows output was produced with it.
 #   kyouko    AmusementClub's Kyouko build, based on upstream 4.1. This is what
 #             the current .NET release actually ships (see release.yaml), so it
 #             is the behaviour-preserving default on win-x64.
-x265	https://bitbucket.org/multicoreware/x265_git.git	4.1	upstream
+x265	https://bitbucket.org/multicoreware/x265_git.git	4.2	upstream
 x265	https://github.com/msg7086/x265-Yuuki-Asuna.git	85189f81fe1f7b4cdd57524c8b71121b07eee6c0	asuna	win-x64
 x265	https://github.com/AmusementClub/x265.git	1a9d0ba396eb135e72d7a746e67ea16af738384c	kyouko	win-x64
 
