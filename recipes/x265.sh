@@ -25,7 +25,7 @@
 #   asuna     msg7086's Yuuki-Asuna fork, frozen at the 3.5 baseline
 #   kyouko    AmusementClub's fork, upstream 4.1 plus x86 tuning
 #
-# Two small patches in patches/ fix the forks for this configuration:
+# Three small patches in patches/ fix the trees for this configuration:
 #
 #   x265-kyouko-cxx11.patch     Kyouko's CMakeLists selects -std=gnu++98
 #                               whenever HDR10+ and AviSynth are off, but its
@@ -34,6 +34,9 @@
 #                               HDR10+; this recipe deliberately does not.
 #   x265-asuna-register.patch   Asuna builds as C++17, where clang rejects the
 #                               'register' storage class in common/md5.cpp.
+#   x265-rvv-restore-vxrm.patch Upstream, linux-riscv64 only, and only for a
+#                               ref that contains the RVV code (4.2 and later;
+#                               4.1 has none). See the patch header.
 #
 # build.sh reuses work/<target>/<recipe>-<variant>/src between runs and
 # re-checks out the ref every time, so the patches are applied from a clean
@@ -154,19 +157,34 @@ cmake_configure() {
 
 # default_fetch checks out the pinned ref, so the patch is applied from a clean
 # tree; the already-applied check keeps a manually patched tree from erroring.
-apply_patches() {
-    local patch
-    case "$TOOL_VARIANT" in
-        kyouko) patch="$ROOT/patches/x265-kyouko-cxx11.patch" ;;
-        asuna)  patch="$ROOT/patches/x265-asuna-register.patch" ;;
-        *)      return 0 ;;
-    esac
+apply_one_patch() {
+    local patch="$1"
     [[ -f "$patch" ]] || { echo "missing patch: $patch" >&2; return 1; }
     if git -C "$SRC" apply --reverse --check "$patch" >/dev/null 2>&1; then
         echo "    patch already applied: $(basename "$patch")"
         return 0
     fi
     git -C "$SRC" apply --verbose "$patch"
+}
+
+apply_patches() {
+    case "$TOOL_VARIANT" in
+        kyouko) apply_one_patch "$ROOT/patches/x265-kyouko-cxx11.patch" ;;
+        asuna)  apply_one_patch "$ROOT/patches/x265-asuna-register.patch" ;;
+        upstream)
+            # RVV filter intrinsics leak vxrm into the assembly kernels, which
+            # makes an RVV build differ from the C reference and from itself
+            # between runs. Only a riscv64 build of a tree that has the RVV code
+            # is affected: x265 4.1 has no riscv64 directory at all, and every
+            # other target compiles none of this. If the tree has the code but
+            # the patch no longer applies, the build stops on purpose: shipping
+            # a non-reproducible encoder silently is worse than a red job, and
+            # it usually means upstream fixed this and the patch can go.
+            if [[ "$CMAKE_SYSTEM_PROCESSOR" == riscv64 ]]                 && [[ -f "$SRC/source/common/riscv64/filter-prim.cpp" ]]; then
+                apply_one_patch "$ROOT/patches/x265-rvv-restore-vxrm.patch"
+            fi
+            ;;
+    esac
 }
 
 fetch() {

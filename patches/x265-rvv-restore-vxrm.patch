@@ -1,0 +1,72 @@
+x265: restore vxrm after the RVV filter intrinsics that change it
+
+filter-prim.cpp's vert_sp and vert_ss intrinsics narrow with
+__riscv_vnclip_wv_i16m1(..., 2, vl), i.e. vxrm = 2 (round-down). The compiler
+writes vxrm before the instruction and never puts it back. The assembly kernels
+(dct.S and others) use vnclip.wi without setting vxrm and rely on the process
+default of 0 (round-to-nearest-up), so any thread that has run one of these
+filters goes on to round differently in the next DCT.
+
+Effect on an 8-bit RVV build: the bitstream differs from the C reference, and
+because vxrm is per hart it also depends on thread scheduling, so two runs of the
+same command on the same machine can produce different files.
+
+This restores vxrm = 0 on return from the two public wrappers. It does not touch
+the 20 call sites, and the kernels in intrapred.S / mc-a.S already set vxrm
+themselves. A fix that makes the assembly set vxrm on entry would be sturdier
+and is for upstream to decide. HIGH_BIT_DEPTH builds do not compile these filters.
+
+Applies to x265 4.2 and to b81f650 (4.2 + 3). x265 4.1 has no riscv64 code.
+See KNOWN-ISSUES-x265-rvv-vxrm.md in the internal notes for the investigation.
+
+--- a/source/common/riscv64/filter-prim.cpp	2026-10-01 19:00:46.174489273 +0800
++++ b/source/common/riscv64/filter-prim.cpp	2026-10-02 01:01:41.271852485 +0800
+@@ -936,7 +936,7 @@
+ }
+ 
+ template<int N, int width, int height>
+-void interp_vert_sp_rvv(const int16_t *src, intptr_t srcStride, pixel *dst,
++void interp_vert_sp_rvv_impl(const int16_t *src, intptr_t srcStride, pixel *dst,
+                          intptr_t dstStride, int coeffIdx)
+ {
+     if (N == 8)
+@@ -968,6 +968,16 @@
+     }
+ }
+ 
++/* The intrinsics above use vxrm=2 and the compiler does not restore it, but the
++ * assembly kernels (dct.S, ...) rely on the default vxrm=0. */
++template<int N, int width, int height>
++void interp_vert_sp_rvv(const int16_t *src, intptr_t srcStride, pixel *dst,
++                         intptr_t dstStride, int coeffIdx)
++{
++    interp_vert_sp_rvv_impl<N, width, height>(src, srcStride, dst, dstStride, coeffIdx);
++    asm volatile("csrwi vxrm, 0" ::: "memory");
++}
++
+ 
+ template<int coeffIdx, int width, int height>
+ void interp8_vert_ss_rvv(const int16_t *src, intptr_t srcStride, int16_t *dst,
+@@ -1101,7 +1111,7 @@
+ }
+ 
+ template<int N, int width, int height>
+-void interp_vert_ss_rvv(const int16_t *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int coeffIdx)
++void interp_vert_ss_rvv_impl(const int16_t *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int coeffIdx)
+ {
+     if (N == 8)
+     {
+@@ -1133,6 +1143,13 @@
+ }
+ 
+ template<int N, int width, int height>
++void interp_vert_ss_rvv(const int16_t *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int coeffIdx)
++{
++    interp_vert_ss_rvv_impl<N, width, height>(src, srcStride, dst, dstStride, coeffIdx);
++    asm volatile("csrwi vxrm, 0" ::: "memory");
++}
++
++template<int N, int width, int height>
+ void interp_hv_pp_rvv(const pixel *src, intptr_t srcStride, pixel *dst,
+                        intptr_t dstStride, int idxX, int idxY)
+ {

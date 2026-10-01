@@ -21,8 +21,9 @@
 # x265 ships in three flavours. win-x64 gets all of them so the engine can pick
 # at runtime; every other target gets upstream only.
 #
-#   upstream  the modern 4.x line, which carries the ARM NEON and RISC-V RVV
-#             work. This is the default everywhere except win-x64.
+#   upstream  the modern 4.x line, which carries the ARM NEON work. This is the
+#             default everywhere except win-x64. RISC-V RVV is NOT in 4.1: it
+#             first appears in 4.2, so at 4.1 a linux-riscv64 build is plain C.
 #   asuna     the Yuuki-Asuna fork, frozen at the 3.5 (2021) baseline. Retained
 #             because existing Windows output was produced with it.
 #   kyouko    AmusementClub's Kyouko build, based on upstream 4.1. This is what
