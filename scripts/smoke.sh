@@ -56,6 +56,15 @@ qemu_for() {
     echo "qemu-$arch -L $root"
 }
 
+# True when this script is running on Windows itself (Git Bash / MSYS2 /
+# Cygwin), where a PE binary is executed directly instead of through wine.
+on_windows() {
+    case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 runner_for() {
     case "$TARGET" in
         linux-riscv64) echo "$(qemu_for riscv64 /usr/riscv64-linux-gnu)" ;;
@@ -69,7 +78,15 @@ runner_for() {
                 *)             echo "$(qemu_for aarch64 /usr/aarch64-linux-gnu)" ;;
             esac
             ;;
-        win-*)         echo "wine" ;;
+        win-*)
+            # wine only emulates a foreign architecture: on x86-64 it cannot
+            # start an ARM64 PE at all ("Application could not be started"),
+            # and on arm64 Linux it hangs indefinitely in the prefix setup.
+            # Neither can check a win-arm64 build, so that target runs on the
+            # windows-11-arm runner and the .exe is executed natively. The
+            # x86-64 Windows build keeps using wine on the Linux runner.
+            if on_windows; then echo ""; else echo "wine"; fi
+            ;;
         *)             echo "" ;;
     esac
 }

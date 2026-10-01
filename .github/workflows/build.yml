@@ -254,14 +254,19 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.matrix.outputs.smoke) }}
-    # win-arm64 needs an arm64 host. Wine emulates a foreign architecture, and
-    # on x86-64 it cannot start an ARM64 PE at all: the run fails with
-    # "Application could not be started, or no application associated with the
-    # specified file", which is what left win-arm64 as the only red smoke job
-    # once the other four passed. The arm64 runner is free for public
-    # repositories and runs the ARM64 binaries through a native arm64 wine.
-    # linux-arm64 stays on x86-64, where qemu-aarch64-static already works.
-    runs-on: ${{ matrix.target == 'win-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    # win-arm64 runs on the native Windows arm64 runner. wine can only emulate
+    # a foreign architecture, and neither direction works for this target: on
+    # x86-64 wine refuses to start an ARM64 PE ("Application could not be
+    # started, or no application associated with the specified file"), and on
+    # arm64 Linux it hangs indefinitely while creating its prefix. Running the
+    # .exe on real ARM64 Windows is the only real check, and the runner is free
+    # for public repositories.
+    runs-on: ${{ matrix.target == 'win-arm64' && 'windows-11-arm' || 'ubuntu-latest' }}
+    defaults:
+      run:
+        # bash exists on every runner (Git Bash on Windows), so one script
+        # works everywhere instead of needing a pwsh variant of smoke.sh.
+        shell: bash
     steps:
       - uses: actions/checkout@v5
 
@@ -291,11 +296,12 @@ jobs:
           find "out/${{ matrix.target }}/tools" -maxdepth 2 | sort >&2
 
       - name: Install emulators
+        # Only the Linux runner needs these: it executes the riscv64 result
+        # through qemu and the x86-64 Windows result through wine. The Windows
+        # runner runs its own architecture natively and installs nothing.
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          # qemu runs the riscv64 and arm64 Linux results; wine runs the
-          # Windows ones. win-arm64 runs on the arm64 runner above, where the
-          # wine package is the arm64 build and can start an ARM64 PE.
           sudo apt-get install -y qemu-user-static || true
           # The wine64 package installs no "wine" command on Debian/Ubuntu --
           # the binary lives at /usr/lib/wine/wine64 with no /usr/bin symlink --
@@ -313,4 +319,7 @@ jobs:
           command -v wine && wine --version || echo "wine is not available on this runner"
 
       - name: Smoke test
-        run: ./scripts/smoke.sh "${{ matrix.target }}"
+        # Invoked through bash rather than ./script: the executable bit is not
+        # meaningful on a Windows checkout, and smoke.sh restores the bit on the
+        # binaries it downloads for the same reason.
+        run: bash scripts/smoke.sh "${{ matrix.target }}"
