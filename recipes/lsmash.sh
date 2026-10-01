@@ -35,12 +35,20 @@ LSMASH_OS=linux
 
 configure() {
     cd "$SRC"
+    # The target's CFLAGS/LDFLAGS carry the platform policy -- -static for the
+    # static targets and, on riscv64, the -march/-mabi pair. This recipe used
+    # to hardcode "-O2 -fPIC" instead, which discarded both. The musl targets
+    # were the visible casualty: l-smash linked against the musl loader, so on
+    # the glibc smoke runner every binary died with "cannot execute: required
+    # file not found" and l-smash was the one FAIL in an otherwise green job.
+    # The default keeps the recipe usable when run without build.sh.
     ./configure \
         --prefix="$PREFIX/tools/l-smash" \
         --bindir="$PREFIX/tools/l-smash" \
         --target-os="$LSMASH_OS" \
         --cross-prefix="$CROSS_PREFIX" \
-        --extra-cflags="-O2 -fPIC"
+        --extra-cflags="${CFLAGS:--O2 -fPIC}" \
+        --extra-ldflags="${LDFLAGS:-}"
 }
 
 build() {
