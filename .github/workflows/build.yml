@@ -176,10 +176,22 @@ jobs:
       - name: Build
         run: ./scripts/build.sh "${{ matrix.tool }}" "${{ matrix.target }}" "${{ matrix.variant }}"
 
+      - name: Stage the artifact under its target
+        # upload-artifact records the named path's *contents* as the artifact
+        # root, so uploading out/<target>/ directly drops the target level and
+        # every job's tools/ would merge into one shared out/tools/. That both
+        # hid the tree smoke.sh looks for and let same-named binaries from
+        # different targets overwrite each other once merge-multiple ran.
+        # Staging one level up keeps <target>/ in the artifact.
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp -r "out/${{ matrix.target }}" "dist/"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.tool }}-${{ matrix.variant }}-${{ matrix.target }}
-          path: out/${{ matrix.target }}/
+          path: dist/
           if-no-files-found: error
 
   # linux-x64 is built in Alpine so the result links against musl. A matrix
@@ -217,10 +229,22 @@ jobs:
       - name: Build
         run: ./scripts/build.sh "${{ matrix.tool }}" "${{ matrix.target }}" "${{ matrix.variant }}"
 
+      - name: Stage the artifact under its target
+        # upload-artifact records the named path's *contents* as the artifact
+        # root, so uploading out/<target>/ directly drops the target level and
+        # every job's tools/ would merge into one shared out/tools/. That both
+        # hid the tree smoke.sh looks for and let same-named binaries from
+        # different targets overwrite each other once merge-multiple ran.
+        # Staging one level up keeps <target>/ in the artifact.
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp -r "out/${{ matrix.target }}" "dist/"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.tool }}-${{ matrix.variant }}-${{ matrix.target }}
-          path: out/${{ matrix.target }}/
+          path: dist/
           if-no-files-found: error
 
   smoke:
@@ -237,9 +261,27 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: out
-          # Each build job uploaded to out/<target>/, so the artifacts land
-          # side by side exactly as smoke.sh expects.
+          # Each build job stages dist/<target>/ before uploading, so the
+          # artifacts carry the target level and merge into out/<target>/,
+          # which is the tree smoke.sh reads. Uploading out/<target>/ directly
+          # dropped that level: everything merged into one out/tools/ and every
+          # target reported "nothing built".
           merge-multiple: true
+
+      - name: Verify the download laid out one directory per target
+        # smoke.sh reports a missing tree as "nothing built for <target>" and
+        # exits non-zero only because *nothing at all* was found, which is easy
+        # to misread. Fail here instead, with the actual tree, if the artifacts
+        # ever stop carrying the target level.
+        run: |
+          set -euo pipefail
+          if [[ ! -d "out/${{ matrix.target }}/tools" ]]; then
+            echo "expected out/${{ matrix.target }}/tools after download; found:" >&2
+            find out -maxdepth 2 | sort | head -40 >&2
+            exit 1
+          fi
+          echo "out/${{ matrix.target }}/tools is present:" >&2
+          find "out/${{ matrix.target }}/tools" -maxdepth 2 | sort >&2
 
       - name: Install emulators
         run: |
