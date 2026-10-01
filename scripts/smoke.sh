@@ -23,10 +23,42 @@ source "$TARGET_FILE"
 PREFIX="$ROOT/out/$TARGET"
 [[ -d "$PREFIX/tools" ]] || { echo "nothing built for $TARGET" >&2; exit 1; }
 
+# upload-artifact stores an artifact as a zip, and "file permissions are not
+# maintained during zipped artifact upload" (actions/upload-artifact, README
+# "Limitations"), so every binary arrives from download-artifact as 0644. That
+# is harmless for wine, which only needs to read the .exe, but on the Linux
+# targets smoke.sh executes the file directly and every one dies with
+# "Permission denied" -- which is what made all five smoke jobs red while their
+# build jobs were green.
+#
+# Restoring the bit here rather than at upload time is deliberate: changing the
+# upload would change what the release pipeline downloads, and the mode only
+# matters to this runner.
+chmod +x "$PREFIX"/tools/*/* 2>/dev/null || true
+
 # Chooses how to execute a binary for this target.
+#
+# The qemu names are resolved rather than assumed: Debian/Ubuntu's
+# qemu-user-static package ships qemu-<arch>-static only, with no bare
+# qemu-<arch> alias, so hardcoding "qemu-aarch64" fails on the very runner the
+# workflow installs it on. The bare name is still preferred when present
+# because qemu-user (non-static) provides that, and either one works.
+qemu_for() {
+    local arch="$1" root="$2" name
+    for name in "qemu-$arch" "qemu-$arch-static"; do
+        if command -v "$name" >/dev/null 2>&1; then
+            echo "$name -L $root"
+            return
+        fi
+    done
+    # Nothing found: return the bare name so the failure names the command that
+    # is missing instead of silently running the binary directly.
+    echo "qemu-$arch -L $root"
+}
+
 runner_for() {
     case "$TARGET" in
-        linux-riscv64) echo "qemu-riscv64 -L /usr/riscv64-linux-gnu" ;;
+        linux-riscv64) echo "$(qemu_for riscv64 /usr/riscv64-linux-gnu)" ;;
         linux-arm64)
             # linux-arm64 builds natively on GitHub's arm64 runner, so the
             # binaries run directly there. qemu is only needed when the host is
@@ -34,7 +66,7 @@ runner_for() {
             # arm64 smoke test fail with "qemu-aarch64: command not found".
             case "$(uname -m)" in
                 aarch64|arm64) echo "" ;;
-                *)             echo "qemu-aarch64 -L /usr/aarch64-linux-gnu" ;;
+                *)             echo "$(qemu_for aarch64 /usr/aarch64-linux-gnu)" ;;
             esac
             ;;
         win-*)         echo "wine" ;;

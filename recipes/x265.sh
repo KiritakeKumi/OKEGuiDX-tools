@@ -94,18 +94,25 @@ collect_common_flags() {
     # reported as an unused variable.
     if [[ "$CMAKE_SYSTEM_NAME" != Windows ]]; then
         COMMON_FLAGS+=(-DENABLE_LIBNUMA=OFF)
-        # Every Linux target is fully static. CMake renders the out-of-tree
-        # archives named in EXTRA_LIB as a "-Wl,-Bstatic ... -Wl,-Bdynamic"
-        # pair, and that trailing -Bdynamic switches the linker back to shared
-        # lookup for the runtimes it adds afterwards, so libstdc++ and libc are
-        # taken as .so. glibc tolerates it, which is why only the Alpine job
-        # failed: musl's libc.so cannot be linked into a -static image and the
-        # link dies with "attempted static link of dynamic object". Ending the
-        # search in static mode keeps that flag off the line. Not set for
-        # Windows, where the out-of-tree archives are handled differently and
-        # the link already succeeds.
-        COMMON_FLAGS+=(-DCMAKE_LINK_SEARCH_END_STATIC=TRUE)
     fi
+    # CMake renders the out-of-tree archives named in EXTRA_LIB as a
+    # "-Wl,-Bstatic ... -Wl,-Bdynamic" pair, and that trailing -Bdynamic
+    # switches the linker back to shared lookup for every runtime it adds
+    # afterwards. That breaks this build twice over, differently per platform:
+    #
+    #   Linux  libstdc++ and libc are taken as .so. glibc tolerates the result,
+    #          which is why only the Alpine job failed, where musl's libc.so
+    #          cannot be linked into a -static image at all ("attempted static
+    #          link of dynamic object").
+    #   Windows libc++.dll is taken from llvm-mingw, so the "static" Windows
+    #          binary still imports a DLL that no target machine has. The build
+    #          looks fine and the .exe only fails when it is run: on the smoke
+    #          runner under wine it exits 53 with no output, and on a user's
+    #          machine it would fail the same way.
+    #
+    # Ending the library search in static mode removes the trailing -Bdynamic,
+    # and both platforms then produce a self-contained binary.
+    COMMON_FLAGS+=(-DCMAKE_LINK_SEARCH_END_STATIC=TRUE)
     case "$TOOL_VARIANT" in
         asuna|kyouko)
             COMMON_FLAGS+=(
