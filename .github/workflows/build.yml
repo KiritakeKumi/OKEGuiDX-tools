@@ -1,7 +1,7 @@
 name: build
 
-# Rebuilds a tool only when its version in versions.lock changes, or when a
-# recipe changes. versions.lock is the single source of truth for versions
+# Rebuilds the full matrix when a lock, recipe, patch, target or script changes.
+# versions.lock is the single source of truth for versions
 # (TOOLS-REPO.md §6).
 on:
   push:
@@ -9,6 +9,7 @@ on:
     paths:
       - "versions.lock"
       - "recipes/**"
+      - "patches/**"
       - "targets/**"
       - "scripts/**"
       - ".github/workflows/build.yml"
@@ -16,6 +17,7 @@ on:
     paths:
       - "versions.lock"
       - "recipes/**"
+      - "patches/**"
       - "targets/**"
       - "scripts/**"
       - ".github/workflows/build.yml"
@@ -41,6 +43,9 @@ jobs:
       smoke: ${{ steps.gen.outputs.smoke }}
     steps:
       - uses: actions/checkout@v5
+      - name: Test smoke gate
+        run: bash scripts/test-smoke.sh
+
       - id: gen
         run: |
           set -euo pipefail
@@ -125,7 +130,7 @@ jobs:
       matrix: ${{ fromJSON(needs.matrix.outputs.standard) }}
     # Public repositories get the arm64 runners for free with no minute limit,
     # so linux-arm64 builds natively instead of cross-compiling.
-    runs-on: ${{ matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || matrix.target == 'linux-riscv64' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -152,7 +157,7 @@ jobs:
               # Native arm64 runner; nothing to install.
               ;;
             linux-riscv64)
-              sudo apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+              sudo apt-get install -y gcc-14-riscv64-linux-gnu g++-14-riscv64-linux-gnu
               ;;
             win-x64|win-arm64)
               # llvm-mingw is the only toolchain that covers win-arm64: GCC
@@ -264,9 +269,9 @@ jobs:
     runs-on: ${{ matrix.target == 'win-arm64' && 'windows-11-arm' || 'ubuntu-latest' }}
     # The default is 360 minutes. An emulator that hangs rather than fails --
     # arm64 wine did exactly that, sitting in the Smoke test step for an hour --
-    # would otherwise hold the run, and the concurrency group, for six. Ten
-    # minutes is many times the real duration of every check here.
-    timeout-minutes: 10
+    # would otherwise hold the run for six hours. Allow dependency installation
+    # time as well as the per-binary 60-second checks.
+    timeout-minutes: 20
     defaults:
       run:
         # bash exists on every runner (Git Bash on Windows), so one script
@@ -278,6 +283,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: out
+          pattern: "*-${{ matrix.target }}"
           # Each build job stages dist/<target>/ before uploading, so the
           # artifacts carry the target level and merge into out/<target>/,
           # which is the tree smoke.sh reads. Uploading out/<target>/ directly
@@ -300,19 +306,19 @@ jobs:
           echo "out/${{ matrix.target }}/tools is present:" >&2
           find "out/${{ matrix.target }}/tools" -maxdepth 2 | sort >&2
 
-      - name: Install emulators
-        # Only the Linux runner needs these: it executes the riscv64 result
-        # through qemu and the x86-64 Windows result through wine. The Windows
-        # runner runs its own architecture natively and installs nothing.
-        if: runner.os == 'Linux'
+      - name: Install QEMU
+        if: matrix.target == 'linux-arm64' || matrix.target == 'linux-riscv64'
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static || true
-          # The wine64 package installs no "wine" command on Debian/Ubuntu --
-          # the binary lives at /usr/lib/wine/wine64 with no /usr/bin symlink --
-          # but smoke.sh calls "wine". Link it so the check does not depend on
-          # the fallback package being the one that provides the command.
-          sudo apt-get install -y wine64 || sudo apt-get install -y wine || true
+          sudo apt-get install -y --no-install-recommends qemu-user-static
+
+      - name: Install Wine
+        if: matrix.target == 'win-x64'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wine64
           if ! command -v wine >/dev/null 2>&1; then
             for candidate in /usr/lib/wine/wine64 /usr/lib/wine/wine; do
               if [[ -x "$candidate" ]]; then
@@ -321,7 +327,7 @@ jobs:
               fi
             done
           fi
-          command -v wine && wine --version || echo "wine is not available on this runner"
+          wine --version
 
       - name: Smoke test
         # Invoked through bash rather than ./script: the executable bit is not
