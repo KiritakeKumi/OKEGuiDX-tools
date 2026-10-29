@@ -140,6 +140,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake nasm yasm git pkg-config zstd zlib1g-dev
 
+      - name: Install compatible CMake for x265
+        if: matrix.tool == 'x265'
+        run: |
+          set -euo pipefail
+          # The legacy forks set policies to OLD, which CMake 4 rejects.
+          python3 -m venv "$RUNNER_TEMP/x265-cmake"
+          "$RUNNER_TEMP/x265-cmake/bin/python" -m pip install --only-binary=:all: cmake==3.31.6
+          "$RUNNER_TEMP/x265-cmake/bin/cmake" --version
+          echo "$RUNNER_TEMP/x265-cmake/bin" >> "$GITHUB_PATH"
+
       - name: Install mkvtoolnix build dependencies
         if: matrix.tool == 'mkvtoolnix'
         run: |

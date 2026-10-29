@@ -18,10 +18,9 @@
 #     scripts/smoke.sh checks the same path), so --bindir is pointed at the
 #     tool directory itself.
 #
-# --cc is deliberately NOT passed: configure builds every tool name itself as
-# CC="${CROSS}${CC}", so giving it a prefixed --cc as well doubles the prefix
-# (riscv64-linux-gnu-riscv64-linux-gnu-gcc). --cross-prefix alone is enough, and
-# it covers ar/ld/ranlib/strip the same way.
+# configure prepends CROSS_PREFIX to --cc itself. Strip that prefix from the
+# selected CC so versioned compilers (e.g. gcc-14) are respected without
+# producing a doubled prefix. Binutils still use --cross-prefix normally.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -47,6 +46,7 @@ configure() {
         --bindir="$PREFIX/tools/l-smash" \
         --target-os="$LSMASH_OS" \
         --cross-prefix="$CROSS_PREFIX" \
+        --cc="${CC#"$CROSS_PREFIX"}" \
         --extra-cflags="${CFLAGS:--O2 -fPIC}" \
         --extra-ldflags="${LDFLAGS:-}"
 }

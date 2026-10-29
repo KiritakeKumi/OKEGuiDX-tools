@@ -298,7 +298,7 @@ download() {
     fi
 
     echo "    fetch $(basename "$dest")"
-    curl --fail --location --retry 3 --output "$dest" "$url"
+    curl --fail --location --retry 3 --retry-all-errors --connect-timeout 30 --output "$dest" "$url"
 
     got="$(sha256sum "$dest" | cut -d' ' -f1)"
     if [[ "$got" != "$want" ]]; then
@@ -339,7 +339,7 @@ fetch() {
         local boost_tar="$dl/boost_$BOOST_UNDERSCORE.tar.gz"
         if [[ ! -f "$boost_tar" ]]; then
             echo "    fetch boost_$BOOST_UNDERSCORE.tar.gz"
-            curl --fail --location --retry 3 --output "$boost_tar" \
+            curl --fail --location --retry 3 --retry-all-errors --connect-timeout 30 --output "$boost_tar" \
                 "https://archives.boost.io/release/$BOOST_VERSION/source/boost_$BOOST_UNDERSCORE.tar.gz"
         fi
         tar -xzf "$boost_tar" -C "$dl"

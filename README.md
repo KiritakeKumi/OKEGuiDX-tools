@@ -20,7 +20,7 @@ The [previous run at 08ca677](https://github.com/KiritakeKumi/OKEGuiDX-tools/act
 
 That run allowed missing binaries to be skipped, so its riscv64 smoke success did not validate x265. Its build log confirms the vxrm patch applied, followed by an RVV intrinsic argument mismatch with GCC 13.
 
-The current changes select GCC/G++ 14 for riscv64, install emulators only where needed, and make every required binary mandatory, including l-smash remuxer. Windows x64 additionally requires the encoder variants. Each smoke job downloads only its target artifacts and has a 20-minute limit. All 25 fixture-based smoke regression cases pass locally and run in CI; a new full build and real-tool smoke run is still required for acceptance. RVV encoding comparisons remain pending.
+The current changes select GCC/G++ 14 for riscv64, install emulators only where needed, and make every required binary mandatory, including l-smash remuxer. Windows x64 additionally requires the encoder variants. Each smoke job downloads only its target artifacts and has a 20-minute limit. All 25 fixture-based smoke regression cases pass locally and run in CI; a new full build and real-tool smoke run is still required for acceptance. RVV encoding comparisons remain pending. The next CI run also exposed runner CMake 4 rejecting legacy x265 policies; Ubuntu x265 jobs now explicitly use CMake 3.31.6. l-smash receives the selected compiler suffix so its cross-prefix logic also respects GCC 14.
 
 bundle.sh packages local output; automated bundle/Release is not implemented.
 
