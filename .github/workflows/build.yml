@@ -13,6 +13,7 @@ on:
       - "targets/**"
       - "scripts/**"
       - ".github/workflows/build.yml"
+      - ".github/workflows/smoke.yml"
   pull_request:
     paths:
       - "versions.lock"
@@ -21,6 +22,7 @@ on:
       - "targets/**"
       - "scripts/**"
       - ".github/workflows/build.yml"
+      - ".github/workflows/smoke.yml"
   workflow_dispatch:
 
 concurrency:
@@ -265,82 +267,9 @@ jobs:
   smoke:
     needs: [matrix, build, build-alpine]
     if: always() && (needs.build.result == 'success' || needs.build-alpine.result == 'success')
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJSON(needs.matrix.outputs.smoke) }}
-    # win-arm64 runs on the native Windows arm64 runner. wine can only emulate
-    # a foreign architecture, and neither direction works for this target: on
-    # x86-64 wine refuses to start an ARM64 PE ("Application could not be
-    # started, or no application associated with the specified file"), and on
-    # arm64 Linux it hangs indefinitely while creating its prefix. Running the
-    # .exe on real ARM64 Windows is the only real check, and the runner is free
-    # for public repositories.
-    runs-on: ${{ matrix.target == 'win-arm64' && 'windows-11-arm' || 'ubuntu-latest' }}
-    # The default is 360 minutes. An emulator that hangs rather than fails --
-    # arm64 wine did exactly that, sitting in the Smoke test step for an hour --
-    # would otherwise hold the run for six hours. Allow dependency installation
-    # time as well as the per-binary 60-second checks.
-    timeout-minutes: 20
-    defaults:
-      run:
-        # bash exists on every runner (Git Bash on Windows), so one script
-        # works everywhere instead of needing a pwsh variant of smoke.sh.
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: out
-          pattern: "*-${{ matrix.target }}"
-          # Each build job stages dist/<target>/ before uploading, so the
-          # artifacts carry the target level and merge into out/<target>/,
-          # which is the tree smoke.sh reads. Uploading out/<target>/ directly
-          # dropped that level: everything merged into one out/tools/ and every
-          # target reported "nothing built".
-          merge-multiple: true
-
-      - name: Verify the download laid out one directory per target
-        # smoke.sh reports a missing tree as "nothing built for <target>" and
-        # exits non-zero only because *nothing at all* was found, which is easy
-        # to misread. Fail here instead, with the actual tree, if the artifacts
-        # ever stop carrying the target level.
-        run: |
-          set -euo pipefail
-          if [[ ! -d "out/${{ matrix.target }}/tools" ]]; then
-            echo "expected out/${{ matrix.target }}/tools after download; found:" >&2
-            find out -maxdepth 2 | sort | head -40 >&2
-            exit 1
-          fi
-          echo "out/${{ matrix.target }}/tools is present:" >&2
-          find "out/${{ matrix.target }}/tools" -maxdepth 2 | sort >&2
-
-      - name: Install QEMU
-        if: matrix.target == 'linux-arm64' || matrix.target == 'linux-riscv64'
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static
-
-      - name: Install Wine
-        if: matrix.target == 'win-x64'
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wine64
-          if ! command -v wine >/dev/null 2>&1; then
-            for candidate in /usr/lib/wine/wine64 /usr/lib/wine/wine; do
-              if [[ -x "$candidate" ]]; then
-                sudo ln -sf "$candidate" /usr/local/bin/wine
-                break
-              fi
-            done
-          fi
-          wine --version
-
-      - name: Smoke test
-        # Invoked through bash rather than ./script: the executable bit is not
-        # meaningful on a Windows checkout, and smoke.sh restores the bit on the
-        # binaries it downloads for the same reason.
-        run: bash scripts/smoke.sh "${{ matrix.target }}"
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/smoke.yml
+    with:
+      source_run_id: ${{ github.run_id }}

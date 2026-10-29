@@ -1,0 +1,57 @@
+name: Tool smoke tests
+
+on:
+  workflow_call:
+    inputs:
+      source_run_id:
+        description: Build run containing the tool artifacts
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed build run containing all five targets
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux-x64, linux-arm64, linux-riscv64, win-x64, win-arm64]
+    runs-on: ${{ matrix.target == 'win-arm64' && 'windows-11-arm' || matrix.target == 'win-x64' && 'windows-2025' || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+          path: out
+          pattern: "*-${{ matrix.target }}"
+          merge-multiple: true
+
+      - name: Verify target artifact layout
+        run: |
+          set -euo pipefail
+          test -d "out/${{ matrix.target }}/tools"
+          find "out/${{ matrix.target }}/tools" -maxdepth 2 | sort
+
+      - name: Install QEMU
+        if: matrix.target == 'linux-arm64' || matrix.target == 'linux-riscv64'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user-static
+
+      - name: Smoke test
+        run: bash scripts/smoke.sh "${{ matrix.target }}"

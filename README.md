@@ -14,7 +14,7 @@ Build recipes for OKEGuiDX open-source external tools across five targets. Vapou
 
 ## Smoke tests and current status (2026-10-30)
 
-Smoke tests are jobs in build.yml. win-arm64 runs on native windows-11-arm; linux-arm64/riscv64 use QEMU on x86 Linux, win-x64 uses Wine and linux-x64 executes directly. linux-riscv64 currently uses GNU/glibc, not musl.
+build.yml calls the reusable smoke.yml workflow. Windows x64/arm64 run natively on windows-2025/windows-11-arm; linux-arm64/riscv64 use QEMU on ubuntu-24.04 and linux-x64 executes directly. Smoke tests can also be dispatched manually with a source build run ID to reuse artifacts without rebuilding tools. linux-riscv64 currently uses GNU/glibc, not musl.
 
 The [previous run at 08ca677](https://github.com/KiritakeKumi/OKEGuiDX-tools/actions/runs/36913310070) has 41 successful jobs, one failure and two cancellations. x265 upstream / linux-riscv64 failed during Build. linux-x64/win-x64 smoke jobs were cancelled during emulator installation. The other three smoke jobs passed.
 
@@ -78,3 +78,5 @@ binaries, the corresponding source must be obtainable:
 `ffmpeg` is deliberately built **without** `--enable-libfdk-aac`: that licence is
 incompatible with GPL redistribution, and the engine refuses AAC encoding on
 platforms without qaac anyway.
+
+The aec95c3 build completed all 38 build jobs successfully. Its linux-x64 and win-arm64 smoke jobs passed; three other smoke jobs failed during emulator installation on the moving ubuntu-latest image. The smoke workflow now pins Ubuntu 24.04 and uses native Windows x64; acceptance of these changes is pending.
